@@ -20,6 +20,17 @@ export async function requestFeedback({ text, activity }) {
   return data;
 }
 
+export async function checkTeacherPassword(password) {
+  const res = await fetch("/api/teacher-auth", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ password }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "비밀번호를 확인하지 못했어요.");
+  return data.ok === true;
+}
+
 export function fileToBase64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();

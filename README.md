@@ -60,10 +60,12 @@ VITE_FIREBASE_STORAGE_BUCKET=...
 VITE_FIREBASE_MESSAGING_SENDER_ID=...
 VITE_FIREBASE_APP_ID=...
 
-VITE_TEACHER_PASSCODE=원하는비밀번호
+TEACHER_PASSCODE=원하는비밀번호
 
 ANTHROPIC_API_KEY=sk-ant-...
 ```
+
+`TEACHER_PASSCODE`는 (`VITE_` 접두사가 없어서) 서버에서만 쓰이고, 학생 화면 브라우저 코드에는 절대 노출되지 않습니다.
 
 ## 4. GitHub에 올리기
 
@@ -90,7 +92,7 @@ git push -u origin main
 - **학생용**: `https://프로젝트이름.vercel.app` 링크를 그대로 알려주면 됩니다. 로그인이
   필요 없고, 이름만 적고 바로 시작합니다.
 - **교사용**: 같은 주소 뒤에 `?teacher=1`을 붙인 링크 (`https://프로젝트이름.vercel.app/?teacher=1`)
-  로 들어가면 비밀번호 입력 화면이 나오고, 3단계에서 정한 `VITE_TEACHER_PASSCODE`를
+  로 들어가면 비밀번호 입력 화면이 나오고, 3단계에서 정한 `TEACHER_PASSCODE`를
   입력하면 전체 학생 제출 목록을 볼 수 있습니다.
 
 ## 7. 글쓰기 코너 추가하기
@@ -116,7 +118,8 @@ vercel dev
 
 - Firestore 보안 규칙이 로그인 없이 열려 있어서, Firebase 설정 값을 아는 사람이 마음만
   먹으면 Firestore SDK로 직접 데이터를 읽을 수도 있습니다. 학급 활동 수준의 낮은 민감도
-  데이터에 맞춘 절충입니다.
+  데이터에 맞춘 절충입니다. (교사 비밀번호 자체는 이제 서버에서만 확인하므로 브라우저
+  코드에는 노출되지 않습니다.)
 - 원고지 사진 용량이 크면 AI가 읽는 데 시간이 걸릴 수 있습니다.
 - 친구 피드백 단계, 완성작 인쇄용 모아보기(잡지 형태) 는 아직 들어있지 않습니다. 지금
   구조(Firestore에 학생별 최종본이 다 저장됨) 위에서 자연스럽게 이어서 만들 수 있습니다.

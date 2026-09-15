@@ -78,13 +78,17 @@ export default function StudentFlow() {
     }
   }
 
-  async function handlePhotoChosen(file) {
+  async function handlePhotosChosen(files) {
     setError("");
     setStep("loadingOcr");
     try {
-      const { mediaType, base64 } = await fileToBase64(file);
-      const { text: recognized } = await requestOcr({ mediaType, base64 });
-      setOcrDraft(recognized || "");
+      const pieces = [];
+      for (const file of files) {
+        const { mediaType, base64 } = await fileToBase64(file);
+        const { text: recognized } = await requestOcr({ mediaType, base64 });
+        if (recognized) pieces.push(recognized);
+      }
+      setOcrDraft(pieces.join("\n\n"));
       setStep("confirming");
     } catch (e) {
       setError(e.message || "사진을 읽는 중 문제가 생겼어요.");
@@ -299,13 +303,17 @@ export default function StudentFlow() {
               >
                 <ImageUp size={26} style={{ color: PALETTE.gold }} />
                 <span className="text-sm font-bold" style={{ color: PALETTE.text }}>원고지 사진 올리기</span>
+                <span className="text-xs text-center px-2" style={{ color: PALETTE.textMuted }}>
+                  앞면·뒷면처럼 여러 장이면 한 번에 여러 장을 골라주세요
+                </span>
                 <input
                   type="file"
                   accept="image/*"
+                  multiple
                   className="hidden"
                   onChange={(e) => {
-                    const file = e.target.files && e.target.files[0];
-                    if (file) handlePhotoChosen(file);
+                    const files = e.target.files ? Array.from(e.target.files) : [];
+                    if (files.length > 0) handlePhotosChosen(files);
                   }}
                 />
               </label>
