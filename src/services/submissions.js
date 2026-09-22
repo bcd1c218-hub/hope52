@@ -5,6 +5,7 @@ import {
   doc,
   getDocs,
   query,
+  where,
   orderBy,
   serverTimestamp,
 } from "firebase/firestore";
@@ -64,4 +65,22 @@ export async function fetchAllSubmissions() {
   const q = query(collection(db, SUBMISSIONS), orderBy("updatedAt", "desc"));
   const snap = await getDocs(q);
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+
+// 같은 이름 + 같은 코너로 "아직 끝내지 않은" 원고가 있으면 찾아서 이어서 쓸 수 있게 합니다.
+// (studentName만 등호 조건으로 걸어서 인덱스 설정 없이도 바로 동작하도록 하고,
+//  코너/완료 여부는 가져온 뒤 자바스크립트에서 걸러냅니다.)
+export async function findActiveSubmission({ studentName, activityId }) {
+  const q = query(collection(db, SUBMISSIONS), where("studentName", "==", studentName));
+  const snap = await getDocs(q);
+  let best = null;
+  snap.forEach((d) => {
+    const data = { id: d.id, ...d.data() };
+    if (data.activityId !== activityId) return;
+    if (data.status === "completed") return;
+    const updatedMillis = data.updatedAt?.toMillis ? data.updatedAt.toMillis() : 0;
+    const bestMillis = best?.updatedAt?.toMillis ? best.updatedAt.toMillis() : -1;
+    if (!best || updatedMillis > bestMillis) best = data;
+  });
+  return best;
 }

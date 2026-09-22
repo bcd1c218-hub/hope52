@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Lock, RefreshCcw, Printer, X, ChevronRight } from "lucide-react";
+import { RefreshCcw, Printer, X, ChevronRight } from "lucide-react";
 import { PALETTE } from "../palette.js";
 import { fetchAllSubmissions } from "../services/submissions.js";
 import FeedbackView from "./FeedbackView.jsx";
@@ -11,17 +11,11 @@ function formatTime(ts) {
 }
 
 export default function TeacherDashboard() {
-  const [unlocked, setUnlocked] = useState(false);
-  const [passInput, setPassInput] = useState("");
-  const [passError, setPassError] = useState("");
-
   const [submissions, setSubmissions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [activityFilter, setActivityFilter] = useState("all");
   const [selected, setSelected] = useState(null);
-
-  const teacherPasscode = import.meta.env.VITE_TEACHER_PASSCODE || "";
 
   async function load() {
     setLoading(true);
@@ -37,20 +31,8 @@ export default function TeacherDashboard() {
   }
 
   useEffect(() => {
-    if (unlocked) load();
-  }, [unlocked]);
-
-  function handleUnlock() {
-    if (!teacherPasscode) {
-      setPassError("VITE_TEACHER_PASSCODE가 설정되어 있지 않아요. 환경변수를 확인해주세요.");
-      return;
-    }
-    if (passInput === teacherPasscode) {
-      setUnlocked(true);
-    } else {
-      setPassError("비밀번호가 맞지 않아요.");
-    }
-  }
+    load();
+  }, []);
 
   const activityOptions = useMemo(() => {
     const set = new Set(submissions.map((s) => s.activityLabel).filter(Boolean));
@@ -61,42 +43,6 @@ export default function TeacherDashboard() {
     if (activityFilter === "all") return submissions;
     return submissions.filter((s) => s.activityLabel === activityFilter);
   }, [submissions, activityFilter]);
-
-  if (!unlocked) {
-    return (
-      <div className="min-h-screen w-full flex items-center justify-center" style={{ backgroundColor: PALETTE.paper }}>
-        <div className="w-full max-w-xs flex flex-col items-center text-center px-5">
-          <div className="w-14 h-14 rounded-full flex items-center justify-center mb-5" style={{ backgroundColor: PALETTE.paperDeep }}>
-            <Lock size={22} style={{ color: PALETTE.gold }} />
-          </div>
-          <h1 className="sayeon-serif text-xl font-bold mb-2" style={{ color: PALETTE.text }}>
-            교사 취합 화면
-          </h1>
-          <p className="text-sm mb-6" style={{ color: PALETTE.textMuted }}>
-            비밀번호를 입력해주세요.
-          </p>
-          <input
-            type="password"
-            value={passInput}
-            onChange={(e) => setPassInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleUnlock()}
-            className="w-full px-4 py-3 rounded-md text-sm border mb-3"
-            style={{ borderColor: PALETTE.paperDeep, backgroundColor: "white", color: PALETTE.text }}
-          />
-          {passError && (
-            <p className="text-xs mb-3" style={{ color: PALETTE.signal }}>{passError}</p>
-          )}
-          <button
-            onClick={handleUnlock}
-            className="w-full px-4 py-3 rounded-md text-sm font-bold"
-            style={{ backgroundColor: PALETTE.ink, color: PALETTE.paper }}
-          >
-            들어가기
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen w-full" style={{ backgroundColor: PALETTE.paper }}>

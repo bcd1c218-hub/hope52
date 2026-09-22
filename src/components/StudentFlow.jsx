@@ -18,7 +18,7 @@ import { StageTracker, OnAirBadge } from "./Shared.jsx";
 import FeedbackView from "./FeedbackView.jsx";
 import { requestOcr, requestFeedback, fileToBase64 } from "../api.js";
 import { fetchCustomActivities, saveCustomActivity } from "../services/customActivities.js";
-import { createSubmission, addRevision, markCompleted } from "../services/submissions.js";
+import { createSubmission, addRevision, markCompleted, findActiveSubmission } from "../services/submissions.js";
 
 export default function StudentFlow() {
   const [step, setStep] = useState("start");
@@ -30,12 +30,15 @@ export default function StudentFlow() {
   const [customFocus, setCustomFocus] = useState("");
   const [text, setText] = useState("");
   const [ocrDraft, setOcrDraft] = useState("");
+  const [photoPreviews, setPhotoPreviews] = useState([]);
   const [feedback, setFeedback] = useState(null);
   const [error, setError] = useState("");
   const [revisionRound, setRevisionRound] = useState(0);
 
   const [submissionId, setSubmissionId] = useState(null);
   const [versions, setVersions] = useState([]);
+  const [resumed, setResumed] = useState(false);
+  const [checkingResume, setCheckingResume] = useState(false);
 
   useEffect(() => {
     fetchCustomActivities()
@@ -45,7 +48,7 @@ export default function StudentFlow() {
       });
   }, []);
 
-  const stageIndex = ["start", "activity", "method", "compose", "confirming"].includes(step)
+  const stageIndex = ["start", "activity", "checkingResume", "method", "compose", "confirming"].includes(step)
     ? 0
     : ["feedback", "loadingFeedback"].includes(step)
     ? 1
@@ -53,8 +56,37 @@ export default function StudentFlow() {
     ? 2
     : 0;
 
-  function chooseActivity(preset) {
+  async function chooseActivity(preset) {
     setActivity(preset);
+    await resumeOrStart(preset);
+  }
+
+  async function resumeOrStart(chosenActivity) {
+    const name = studentName.trim();
+    if (!name) {
+      setStep("method");
+      return;
+    }
+    setCheckingResume(true);
+    setStep("checkingResume");
+    try {
+      const existing = await findActiveSubmission({ studentName: name, activityId: chosenActivity.id });
+      if (existing && existing.versions && existing.versions.length > 0) {
+        const last = existing.versions[existing.versions.length - 1];
+        setSubmissionId(existing.id);
+        setVersions(existing.versions);
+        setText(last.text || "");
+        setFeedback(last.feedback || null);
+        setRevisionRound(existing.versions.length);
+        setResumed(true);
+        setStep("feedback");
+        setCheckingResume(false);
+        return;
+      }
+    } catch (e) {
+      // 이어서 쓰기 조회에 실패해도 새로 시작할 수 있어야 합니다.
+    }
+    setCheckingResume(false);
     setStep("method");
   }
 
@@ -70,21 +102,36 @@ export default function StudentFlow() {
       isCustom: true,
     };
     setActivity(newActivity);
-    setStep("method");
     try {
       await saveCustomActivity(newActivity);
     } catch (e) {
       // 저장에 실패해도 이번 시간 활동은 계속 진행합니다.
     }
+    // 방금 만든 코너이므로 이전 원고가 있을 리 없어 바로 작성 방법 선택으로 이동합니다.
+    setStep("method");
   }
 
-  async function handlePhotoChosen(file) {
+  async function handlePhotosChosen(files) {
     setError("");
     setStep("loadingOcr");
     try {
-      const { mediaType, base64 } = await fileToBase64(file);
-      const { text: recognized } = await requestOcr({ mediaType, base64 });
-      setOcrDraft(recognized || "");
+      const previews = files.map((file) => URL.createObjectURL(file));
+      setPhotoPreviews(previews);
+
+      const pieces = [];
+      let sawWarning = "";
+      for (const file of files) {
+        const { mediaType, base64 } = await fileToBase64(file);
+        const result = await requestOcr({ mediaType, base64 });
+        if (result.text) pieces.push(result.text);
+        if (result.warning && !sawWarning) sawWarning = result.warning;
+      }
+      setOcrDraft(pieces.join("\n\n"));
+      if (pieces.length === 0 && sawWarning) {
+        setError(sawWarning + " 다른 사진으로 다시 찍어서 올려주세요.");
+        setStep("method");
+        return;
+      }
       setStep("confirming");
     } catch (e) {
       setError(e.message || "사진을 읽는 중 문제가 생겼어요.");
@@ -95,6 +142,7 @@ export default function StudentFlow() {
   async function sendToEditor(finalText) {
     setError("");
     setText(finalText);
+    setResumed(false);
     setStep("loadingFeedback");
     try {
       const fb = await requestFeedback({ text: finalText, activity });
@@ -136,11 +184,13 @@ export default function StudentFlow() {
     setCustomFocus("");
     setText("");
     setOcrDraft("");
+    setPhotoPreviews([]);
     setFeedback(null);
     setError("");
     setRevisionRound(0);
     setSubmissionId(null);
     setVersions([]);
+    setResumed(false);
   }
 
   return (
@@ -161,7 +211,7 @@ export default function StudentFlow() {
               </span>
             )}
           </div>
-          <OnAirBadge active={step === "loadingOcr" || step === "loadingFeedback"} />
+          <OnAirBadge active={step === "checkingResume" || step === "loadingOcr" || step === "loadingFeedback"} />
         </div>
       </div>
 
@@ -299,17 +349,28 @@ export default function StudentFlow() {
               >
                 <ImageUp size={26} style={{ color: PALETTE.gold }} />
                 <span className="text-sm font-bold" style={{ color: PALETTE.text }}>원고지 사진 올리기</span>
+                <span className="text-xs text-center px-2" style={{ color: PALETTE.textMuted }}>
+                  앞면·뒷면처럼 여러 장이면 한 번에 여러 장을 골라주세요
+                </span>
                 <input
                   type="file"
                   accept="image/*"
+                  multiple
                   className="hidden"
                   onChange={(e) => {
-                    const file = e.target.files && e.target.files[0];
-                    if (file) handlePhotoChosen(file);
+                    const files = e.target.files ? Array.from(e.target.files) : [];
+                    if (files.length > 0) handlePhotosChosen(files);
                   }}
                 />
               </label>
             </div>
+          </div>
+        )}
+
+        {step === "checkingResume" && (
+          <div className="flex flex-col items-center pt-20 gap-3">
+            <Loader2 size={26} className="animate-spin" style={{ color: PALETTE.gold }} />
+            <p className="text-sm" style={{ color: PALETTE.textMuted }}>쓰던 원고가 있는지 확인하고 있어요...</p>
           </div>
         )}
 
@@ -323,9 +384,26 @@ export default function StudentFlow() {
         {step === "confirming" && (
           <div>
             <h2 className="sayeon-serif text-lg font-bold mb-1" style={{ color: PALETTE.text }}>이렇게 읽었어요</h2>
-            <p className="text-sm mb-4" style={{ color: PALETTE.textMuted }}>
-              혹시 편집자 AI가 잘못 읽은 글자가 있다면 아래에서 직접 고쳐 주세요.
-            </p>
+            <div
+              className="rounded-md px-4 py-3 text-sm font-bold mb-4"
+              style={{ backgroundColor: "#FBEFE0", color: PALETTE.text }}
+            >
+              ⚠️ AI가 사진을 읽다가 완전히 다른 내용으로 잘못 읽을 때도 있어요. 아래 사진과 글을
+              꼭 하나씩 비교해서, 내가 쓴 것과 다르면 반드시 고쳐 주세요!
+            </div>
+            {photoPreviews.length > 0 && (
+              <div className="flex gap-2 mb-4 overflow-x-auto">
+                {photoPreviews.map((src, i) => (
+                  <img
+                    key={i}
+                    src={src}
+                    alt={`업로드한 사진 ${i + 1}`}
+                    className="h-40 rounded-md border object-contain"
+                    style={{ borderColor: PALETTE.paperDeep, backgroundColor: "white" }}
+                  />
+                ))}
+              </div>
+            )}
             <textarea
               value={ocrDraft}
               onChange={(e) => setOcrDraft(e.target.value)}
@@ -385,6 +463,14 @@ export default function StudentFlow() {
 
         {step === "feedback" && feedback && (
           <div className="flex flex-col gap-4">
+            {resumed && (
+              <div
+                className="rounded-md px-4 py-3 text-sm font-bold"
+                style={{ backgroundColor: PALETTE.paperDeep, color: PALETTE.text }}
+              >
+                🔄 이어서 쓰던 원고예요! 지금까지 {revisionRound}번 피드백을 받았어요.
+              </div>
+            )}
             <FeedbackView feedback={feedback} />
             <div className="flex justify-between items-center mt-2">
               <button
