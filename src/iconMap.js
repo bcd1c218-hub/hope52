@@ -1,4 +1,4 @@
-import { Mic, BookOpen, BookMarked, Megaphone, PenLine } from "lucide-react";
+import { Mic, BookOpen, BookMarked, Megaphone, PenLine, Monitor } from "lucide-react";
 
 export const ICON_MAP = {
   Mic,
@@ -6,6 +6,7 @@ export const ICON_MAP = {
   BookMarked,
   Megaphone,
   PenLine,
+  Monitor,
 };
 
 export function getIcon(name) {
