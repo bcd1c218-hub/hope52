@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { RefreshCcw, Printer, X, ChevronRight } from "lucide-react";
+import { RefreshCcw, Printer, X, ChevronRight, Trash2 } from "lucide-react";
 import { PALETTE } from "../palette.js";
 import { fetchAllSubmissions } from "../services/submissions.js";
+import { fetchCustomActivities, saveCustomActivity, deleteCustomActivity } from "../services/customActivities.js";
+import { DEFAULT_ACTIVITIES } from "../data/activities.js";
 import { AI_LEVEL_LABEL, SELF_LEVEL_LABEL } from "../data/feedbackOptions.js";
 import FeedbackView from "./FeedbackView.jsx";
 
@@ -17,6 +19,7 @@ export default function TeacherDashboard() {
   const [loadError, setLoadError] = useState("");
   const [activityFilter, setActivityFilter] = useState("all");
   const [selected, setSelected] = useState(null);
+  const [tab, setTab] = useState("records");
 
   async function load() {
     setLoading(true);
@@ -58,7 +61,30 @@ export default function TeacherDashboard() {
         </div>
       </div>
 
-      <div className="w-full max-w-4xl mx-auto px-5 py-8">
+      <div className="w-full flex justify-center no-print" style={{ backgroundColor: PALETTE.paperDeep }}>
+        <div className="w-full max-w-4xl flex gap-1 px-5 pt-2">
+          {[
+            ["records", "학생 제출 기록"],
+            ["corners", "코너 관리"],
+          ].map(([id, label]) => (
+            <button
+              key={id}
+              onClick={() => setTab(id)}
+              className="px-4 py-2 text-sm font-bold rounded-t-md"
+              style={{
+                backgroundColor: tab === id ? PALETTE.paper : "transparent",
+                color: tab === id ? PALETTE.ink : PALETTE.textMuted,
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {tab === "corners" && <CornerManager />}
+
+      <div className="w-full max-w-4xl mx-auto px-5 py-8" style={{ display: tab === "records" ? "block" : "none" }}>
         {loadError && (
           <p className="text-sm mb-4" style={{ color: PALETTE.signal }}>{loadError}</p>
         )}
@@ -155,6 +181,13 @@ export default function TeacherDashboard() {
               </div>
             </div>
 
+            {selected.reflection && (selected.reflection.changed || selected.reflection.next) && (
+              <div className="rounded-lg p-4 mb-4 text-sm leading-relaxed" style={{ backgroundColor: PALETTE.goldSoft + "55", color: PALETTE.text }}>
+                <p className="text-xs font-bold mb-1" style={{ color: PALETTE.gold }}>학생 성찰</p>
+                {selected.reflection.changed && <p>· {selected.reflection.changedLabel || "달라진 점"}: {selected.reflection.changed}</p>}
+                {selected.reflection.next && <p>· 다음에 해 보고 싶은 것: {selected.reflection.next}</p>}
+              </div>
+            )}
             <div className="flex flex-col gap-6">
               {(selected.versions || []).map((v, i) => (
                 <div key={i} className="border-t pt-4" style={{ borderColor: PALETTE.paperDeep }}>
@@ -165,12 +198,186 @@ export default function TeacherDashboard() {
                     {v.text}
                   </p>
                   {v.feedback && <FeedbackView feedback={v.feedback} showLevel />}
+                  {v.plan && ((v.plan.items || []).some((it) => it.will) || v.plan.note) && (
+                    <div className="mt-3 rounded-md px-4 py-3 text-xs leading-relaxed" style={{ backgroundColor: "white", color: PALETTE.text }}>
+                      <p className="font-bold mb-1" style={{ color: PALETTE.gold }}>학생의 고치기 계획</p>
+                      {(v.plan.items || []).filter((it) => it.will).map((it, k) => (
+                        <p key={k}>· ({it.category}) {it.question}</p>
+                      ))}
+                      {v.plan.note && <p>· {v.plan.note}</p>}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function sameCorner(a, b) {
+  return (
+    (a.label || "").trim() === (b.label || "").trim() &&
+    (a.writingPrompt || "").trim() === (b.writingPrompt || "").trim() &&
+    (a.contentFocus || "").trim() === (b.contentFocus || "").trim()
+  );
+}
+
+function friendlyError(e) {
+  const msg = String(e?.code || e?.message || e);
+  if (msg.includes("permission")) {
+    return "삭제 권한이 없어요. Firebase 규칙에서 customActivities의 삭제(delete)를 허용해 주세요. (안내문 참고)";
+  }
+  return e?.message || "처리하지 못했어요. 잠시 뒤 다시 해 주세요.";
+}
+
+// 선생님 전용: 자유 코너를 만들고 지우는 화면입니다. (학생 화면에는 나오지 않아요)
+function CornerManager() {
+  const [corners, setCorners] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+  const [label, setLabel] = useState("");
+  const [prompt, setPrompt] = useState("");
+  const [focus, setFocus] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function load() {
+    setLoading(true);
+    setError("");
+    try {
+      setCorners(await fetchCustomActivities());
+    } catch (e) {
+      setError(friendlyError(e));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  const duplicateIds = useMemo(() => {
+    const ids = [];
+    corners.forEach((c, i) => {
+      if (corners.slice(0, i).some((p) => sameCorner(p, c))) ids.push(c.id);
+    });
+    return ids;
+  }, [corners]);
+
+  async function create() {
+    if (!label.trim() || !prompt.trim() || !focus.trim() || busy) return;
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      await saveCustomActivity({ label: label.trim(), writingPrompt: prompt.trim(), contentFocus: focus.trim() });
+      setLabel("");
+      setPrompt("");
+      setFocus("");
+      setMessage("코너를 만들었어요. 학생 화면에 바로 나타나요.");
+      await load();
+    } catch (e) {
+      setError(friendlyError(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove(c) {
+    if (!window.confirm(`"${c.label}" 코너를 삭제할까요?\n(이미 학생이 쓴 글은 지워지지 않아요.)`)) return;
+    setError("");
+    setMessage("");
+    try {
+      await deleteCustomActivity(c.id);
+      setMessage("삭제했어요.");
+      await load();
+    } catch (e) {
+      setError(friendlyError(e));
+    }
+  }
+
+  async function cleanDuplicates() {
+    if (duplicateIds.length === 0) return;
+    if (!window.confirm(`똑같은 코너 ${duplicateIds.length}개를 지우고 하나씩만 남길까요?`)) return;
+    setError("");
+    setMessage("");
+    try {
+      for (const id of duplicateIds) await deleteCustomActivity(id);
+      setMessage(`중복 ${duplicateIds.length}개를 정리했어요.`);
+      await load();
+    } catch (e) {
+      setError(friendlyError(e));
+    }
+  }
+
+  const inputStyle = { borderColor: PALETTE.paperDeep, backgroundColor: "white", color: PALETTE.text };
+
+  return (
+    <div className="w-full max-w-4xl mx-auto px-5 py-8 flex flex-col gap-8">
+      {error && <p className="text-sm font-bold" style={{ color: PALETTE.signal }}>{error}</p>}
+      {message && <p className="text-sm font-bold" style={{ color: PALETTE.copyedit }}>{message}</p>}
+
+      <section>
+        <h2 className="sayeon-serif text-base font-bold mb-3" style={{ color: PALETTE.text }}>새 코너 만들기</h2>
+        <div className="rounded-lg border p-4 flex flex-col gap-2.5" style={{ borderColor: PALETTE.paperDeep, backgroundColor: "white" }}>
+          <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="코너 이름 (예: 관찰 기록 코너)" className="w-full px-3 py-2 rounded-md text-sm border" style={inputStyle} />
+          <input value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="학생에게 보여줄 활동 안내" className="w-full px-3 py-2 rounded-md text-sm border" style={inputStyle} />
+          <input value={focus} onChange={(e) => setFocus(e.target.value)} placeholder="AI가 내용 면에서 살펴볼 점" className="w-full px-3 py-2 rounded-md text-sm border" style={inputStyle} />
+          <button
+            onClick={create}
+            disabled={!label.trim() || !prompt.trim() || !focus.trim() || busy}
+            className="self-end px-4 py-2 rounded-md text-sm font-bold"
+            style={{ backgroundColor: PALETTE.ink, color: PALETTE.paper, opacity: label.trim() && prompt.trim() && focus.trim() && !busy ? 1 : 0.35 }}
+          >
+            코너 만들기
+          </button>
+        </div>
+      </section>
+
+      <section>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="sayeon-serif text-base font-bold" style={{ color: PALETTE.text }}>
+            만든 코너 {loading ? "(불러오는 중...)" : `(${corners.length}개)`}
+          </h2>
+          {duplicateIds.length > 0 && (
+            <button onClick={cleanDuplicates} className="text-xs font-bold px-3 py-1.5 rounded-md" style={{ backgroundColor: "#FBEFE0", color: PALETTE.text }}>
+              중복 {duplicateIds.length}개 정리하기
+            </button>
+          )}
+        </div>
+        {corners.length === 0 && !loading ? (
+          <p className="text-sm" style={{ color: PALETTE.textMuted }}>아직 만든 코너가 없어요.</p>
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {corners.map((c) => (
+              <li key={c.id} className="rounded-lg border p-4 flex items-start justify-between gap-3" style={{ borderColor: PALETTE.paperDeep, backgroundColor: "white" }}>
+                <div className="text-sm leading-relaxed" style={{ color: PALETTE.text }}>
+                  <p className="font-bold">
+                    {c.label}
+                    {duplicateIds.includes(c.id) && (
+                      <span className="ml-2 text-xs font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: "#FBEFE0", color: PALETTE.signal }}>중복</span>
+                    )}
+                  </p>
+                  <p className="text-xs" style={{ color: PALETTE.textMuted }}>안내: {c.writingPrompt}</p>
+                  <p className="text-xs" style={{ color: PALETTE.textMuted }}>AI가 볼 점: {c.contentFocus}</p>
+                </div>
+                <button onClick={() => remove(c)} className="flex items-center gap-1 text-xs font-bold shrink-0" style={{ color: PALETTE.signal }}>
+                  <Trash2 size={14} /> 삭제
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section>
+        <h2 className="sayeon-serif text-base font-bold mb-2" style={{ color: PALETTE.text }}>기본 코너 (삭제할 수 없어요)</h2>
+        <p className="text-sm" style={{ color: PALETTE.textMuted }}>{DEFAULT_ACTIVITIES.map((a) => a.label).join(" · ")}</p>
+      </section>
     </div>
   );
 }

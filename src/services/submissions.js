@@ -50,11 +50,12 @@ export async function addRevision({ submissionId, versions, text, feedback }) {
 }
 
 // 학생이 "방송 준비 완료"를 누르면 최종본으로 표시합니다.
-export async function markCompleted({ submissionId, finalText }) {
+export async function markCompleted({ submissionId, finalText, reflection }) {
   const ref = doc(db, SUBMISSIONS, submissionId);
   await updateDoc(ref, {
     status: "completed",
     currentText: finalText,
+    ...(reflection ? { reflection } : {}),
     completedAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
@@ -83,4 +84,12 @@ export async function findActiveSubmission({ studentName, activityId }) {
     if (!best || updatedMillis > bestMillis) best = data;
   });
   return best;
+}
+
+// 가장 최근 버전에 "고치기 계획" 같은 추가 정보를 붙입니다.
+export async function updateLastVersion({ submissionId, versions, patch }) {
+  if (!submissionId || !versions || versions.length === 0) return versions;
+  const nextVersions = versions.map((v, i) => (i === versions.length - 1 ? { ...v, ...patch } : v));
+  await updateDoc(doc(db, SUBMISSIONS, submissionId), { versions: nextVersions, updatedAt: serverTimestamp() });
+  return nextVersions;
 }

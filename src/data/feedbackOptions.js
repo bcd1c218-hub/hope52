@@ -1,9 +1,8 @@
 // 학생이 글을 쓴 뒤, 피드백을 받기 전에 직접 고르는 항목들입니다.
 export const SELF_LEVELS = [
-  { id: "low", emoji: "🌱", label: "아직 어려워요", desc: "무엇을 더 써야 할지 잘 모르겠어요" },
-  { id: "mid", emoji: "🌿", label: "보통이에요", desc: "쓰긴 썼는데 더 좋아질 것 같아요" },
-  { id: "high", emoji: "🌳", label: "꽤 잘 썼어요", desc: "더 멋지게 다듬고 싶어요" },
-  { id: "unsure", emoji: "🤔", label: "잘 모르겠어요", desc: "편집자 AI가 봐 주세요" },
+  { id: "low", emoji: "🌱", label: "이제 막 시작했어요", desc: "생각을 쓰기 시작한 단계예요" },
+  { id: "mid", emoji: "🌿", label: "쓰는 중이에요", desc: "더 붙이고 고치고 싶어요" },
+  { id: "high", emoji: "🌳", label: "거의 다 됐어요", desc: "마지막으로 다듬고 싶어요" },
 ];
 
 export const FOCUS_OPTIONS = [
@@ -22,4 +21,4 @@ export const DEPTH_OPTIONS = [
 ];
 
 export const AI_LEVEL_LABEL = { low: "하", mid: "중", high: "상" };
-export const SELF_LEVEL_LABEL = { low: "🌱 아직 어려워요", mid: "🌿 보통", high: "🌳 꽤 잘 썼어요", unsure: "🤔 모르겠어요" };
+export const SELF_LEVEL_LABEL = { low: "🌱 막 시작", mid: "🌿 쓰는 중", high: "🌳 거의 다 됨", unsure: "선택 안 함" };

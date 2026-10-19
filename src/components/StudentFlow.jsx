@@ -9,7 +9,6 @@ import {
   ArrowRight,
   ImageUp,
   ChevronLeft,
-  PenLine,
 } from "lucide-react";
 import { PALETTE, GRID_BG } from "../palette.js";
 import { DEFAULT_ACTIVITIES } from "../data/activities.js";
@@ -18,17 +17,14 @@ import { StageTracker, OnAirBadge } from "./Shared.jsx";
 import FeedbackView from "./FeedbackView.jsx";
 import { SELF_LEVELS, FOCUS_OPTIONS, DEPTH_OPTIONS } from "../data/feedbackOptions.js";
 import { requestOcr, requestFeedback, fileToBase64 } from "../api.js";
-import { fetchCustomActivities, saveCustomActivity } from "../services/customActivities.js";
-import { createSubmission, addRevision, markCompleted, findActiveSubmission } from "../services/submissions.js";
+import { fetchCustomActivities } from "../services/customActivities.js";
+import { createSubmission, addRevision, markCompleted, findActiveSubmission, updateLastVersion } from "../services/submissions.js";
 
 export default function StudentFlow() {
   const [step, setStep] = useState("start");
   const [studentName, setStudentName] = useState("");
   const [activities, setActivities] = useState(DEFAULT_ACTIVITIES);
   const [activity, setActivity] = useState(null);
-  const [customLabel, setCustomLabel] = useState("");
-  const [customPrompt, setCustomPrompt] = useState("");
-  const [customFocus, setCustomFocus] = useState("");
   const [text, setText] = useState("");
   const [ocrDraft, setOcrDraft] = useState("");
   const [photoPreviews, setPhotoPreviews] = useState([]);
@@ -38,6 +34,11 @@ export default function StudentFlow() {
   const [selfLevel, setSelfLevel] = useState(null);
   const [focus, setFocus] = useState(["all"]);
   const [depth, setDepth] = useState("hint");
+  const [note, setNote] = useState("");
+  const [planWill, setPlanWill] = useState([]);
+  const [planNote, setPlanNote] = useState("");
+  const [refChanged, setRefChanged] = useState("");
+  const [refNext, setRefNext] = useState("");
 
   const [submissionId, setSubmissionId] = useState(null);
   const [versions, setVersions] = useState([]);
@@ -56,7 +57,7 @@ export default function StudentFlow() {
     ? 0
     : ["feedback", "loadingFeedback"].includes(step)
     ? 1
-    : step === "final"
+    : step === "final" || step === "reflect"
     ? 2
     : 0;
 
@@ -91,27 +92,6 @@ export default function StudentFlow() {
       // 이어서 쓰기 조회에 실패해도 새로 시작할 수 있어야 합니다.
     }
     setCheckingResume(false);
-    setStep("method");
-  }
-
-  async function confirmCustomActivity() {
-    if (!customPrompt.trim() || !customFocus.trim()) return;
-    const newActivity = {
-      id: `custom-${Date.now()}`,
-      label: customLabel.trim() || "자유 코너",
-      icon: "PenLine",
-      tagline: "선생님이 만든 코너",
-      writingPrompt: customPrompt.trim(),
-      contentFocus: customFocus.trim(),
-      isCustom: true,
-    };
-    setActivity(newActivity);
-    try {
-      await saveCustomActivity(newActivity);
-    } catch (e) {
-      // 저장에 실패해도 이번 시간 활동은 계속 진행합니다.
-    }
-    // 방금 만든 코너이므로 이전 원고가 있을 리 없어 바로 작성 방법 선택으로 이동합니다.
     setStep("method");
   }
 
@@ -168,15 +148,18 @@ export default function StudentFlow() {
     setStep("loadingFeedback");
     try {
       const prev = versions && versions.length ? versions[versions.length - 1] : null;
-      const options = { selfLevel: selfLevel || "unsure", focus, depth };
+      const options = { selfLevel: selfLevel || "unsure", focus, depth, note: note.trim() };
       const result = await requestFeedback({
         text: finalText,
         activity,
-        previous: prev ? { text: prev.text, feedback: prev.feedback } : null,
+        previous: prev ? { text: prev.text, feedback: prev.feedback, plan: prev.plan } : null,
         options,
       });
       const fb = { ...result, options };
       setFeedback(fb);
+      setPlanWill([]);
+      setPlanNote("");
+      setNote("");
 
       if (!submissionId) {
         const id = await createSubmission({ studentName, activity, text: finalText, feedback: fb });
@@ -194,10 +177,35 @@ export default function StudentFlow() {
     }
   }
 
+  function goReflect() {
+    setStep("reflect");
+  }
+
+  async function goRevise() {
+    const items = (feedback?.detective_feedback || []).map((d, i) => ({
+      category: d.category,
+      question: d.question,
+      will: planWill.includes(i),
+    }));
+    const plan = { items, note: planNote.trim() };
+    if (submissionId && (items.some((it) => it.will) || plan.note)) {
+      try {
+        const next = await updateLastVersion({ submissionId, versions, patch: { plan } });
+        setVersions(next);
+      } catch (e) {
+        // 계획 저장에 실패해도 고쳐 쓰기는 계속할 수 있어요.
+      }
+    }
+    setRevisionRound((r) => r + 1);
+    setStep("compose");
+  }
+
   async function finishUp() {
+    const changedLabel = versions.length > 1 ? "처음 글보다 달라진 곳" : "이 글에서 가장 마음에 드는 곳";
+    const reflection = { changedLabel, changed: refChanged.trim(), next: refNext.trim() };
     if (submissionId) {
       try {
-        await markCompleted({ submissionId, finalText: text });
+        await markCompleted({ submissionId, finalText: text, reflection });
       } catch (e) {
         // 완료 표시에 실패해도 학생 화면은 정상적으로 넘어갑니다.
       }
@@ -209,9 +217,6 @@ export default function StudentFlow() {
     setStep("start");
     setStudentName("");
     setActivity(null);
-    setCustomLabel("");
-    setCustomPrompt("");
-    setCustomFocus("");
     setText("");
     setOcrDraft("");
     setPhotoPreviews([]);
@@ -221,6 +226,11 @@ export default function StudentFlow() {
     setSelfLevel(null);
     setFocus(["all"]);
     setDepth("hint");
+    setNote("");
+    setPlanWill([]);
+    setPlanNote("");
+    setRefChanged("");
+    setRefNext("");
     setSubmissionId(null);
     setVersions([]);
     setResumed(false);
@@ -318,44 +328,6 @@ export default function StudentFlow() {
                   </button>
                 );
               })}
-            </div>
-
-            <div className="mt-5 rounded-lg border p-4" style={{ borderColor: PALETTE.paperDeep, backgroundColor: "white" }}>
-              <div className="flex items-center gap-2 mb-3">
-                <PenLine size={18} style={{ color: PALETTE.gold }} />
-                <span className="text-sm font-bold" style={{ color: PALETTE.text }}>자유 코너 만들기 (선생님용)</span>
-              </div>
-              <div className="flex flex-col gap-2.5">
-                <input
-                  value={customLabel}
-                  onChange={(e) => setCustomLabel(e.target.value)}
-                  placeholder="코너 이름 (예: 관찰 기록 코너)"
-                  className="w-full px-3 py-2 rounded-md text-sm border"
-                  style={{ borderColor: PALETTE.paperDeep, color: PALETTE.text }}
-                />
-                <input
-                  value={customPrompt}
-                  onChange={(e) => setCustomPrompt(e.target.value)}
-                  placeholder="학생에게 보여줄 활동 안내"
-                  className="w-full px-3 py-2 rounded-md text-sm border"
-                  style={{ borderColor: PALETTE.paperDeep, color: PALETTE.text }}
-                />
-                <input
-                  value={customFocus}
-                  onChange={(e) => setCustomFocus(e.target.value)}
-                  placeholder="AI가 내용 면에서 살펴볼 점"
-                  className="w-full px-3 py-2 rounded-md text-sm border"
-                  style={{ borderColor: PALETTE.paperDeep, color: PALETTE.text }}
-                />
-                <button
-                  onClick={confirmCustomActivity}
-                  disabled={!customPrompt.trim() || !customFocus.trim()}
-                  className="self-end px-4 py-2 rounded-md text-sm font-bold"
-                  style={{ backgroundColor: PALETTE.ink, color: PALETTE.paper, opacity: customPrompt.trim() && customFocus.trim() ? 1 : 0.35 }}
-                >
-                  이 코너로 시작하기
-                </button>
-              </div>
             </div>
           </div>
         )}
@@ -466,6 +438,20 @@ export default function StudentFlow() {
               {revisionRound > 0 ? "고쳐 쓰기" : `${activity.label} 쓰기`}
             </h2>
             <p className="text-sm mb-4" style={{ color: PALETTE.textMuted }}>{activity.writingPrompt}</p>
+            {revisionRound > 0 && (() => {
+              const plan = versions[versions.length - 1]?.plan;
+              const picked = (plan?.items || []).filter((it) => it.will);
+              if (picked.length === 0 && !plan?.note) return null;
+              return (
+                <div className="rounded-md px-4 py-3 mb-4 text-xs leading-relaxed" style={{ backgroundColor: PALETTE.goldSoft + "55", color: PALETTE.text }}>
+                  <p className="font-bold mb-1">🛠 내 고치기 계획</p>
+                  {picked.map((it, k) => (
+                    <p key={k}>· {it.question}</p>
+                  ))}
+                  {plan?.note && <p>· {plan.note}</p>}
+                </div>
+              );
+            })()}
             <textarea
               value={text}
               onChange={(e) => setText(e.target.value)}
@@ -492,19 +478,20 @@ export default function StudentFlow() {
             <div>
               <h2 className="sayeon-serif text-lg font-bold mb-1" style={{ color: PALETTE.text }}>피드백 주문서 📝</h2>
               <p className="text-sm" style={{ color: PALETTE.textMuted }}>
-                내가 원하는 방식으로 피드백을 받아 봐요. 정답은 없으니 솔직하게 골라 주세요.
+                내 글에 꼭 필요한 도움만 받아 봐요. 정답은 없으니 솔직하게 골라 주세요.
               </p>
             </div>
 
             <div>
-              <p className="text-sm font-bold mb-2" style={{ color: PALETTE.text }}>① 내 글은 지금 어느 정도인 것 같나요?</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <p className="text-sm font-bold mb-1" style={{ color: PALETTE.text }}>① 내 글은 지금 어디쯤일까요?</p>
+              <p className="text-xs mb-2" style={{ color: PALETTE.textMuted }}>건너뛰어도 돼요.</p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 {SELF_LEVELS.map((lv) => {
                   const on = selfLevel === lv.id;
                   return (
                     <button
                       key={lv.id}
-                      onClick={() => setSelfLevel(lv.id)}
+                      onClick={() => setSelfLevel(on ? null : lv.id)}
                       className="text-left px-4 py-3 rounded-lg border"
                       style={{
                         borderColor: on ? PALETTE.ink : PALETTE.paperDeep,
@@ -542,6 +529,16 @@ export default function StudentFlow() {
                   );
                 })}
               </div>
+              <label className="block mt-3 text-xs font-bold" style={{ color: PALETTE.textMuted }}>
+                편집자에게 한마디 (쓰고 싶을 때만)
+                <input
+                  value={note}
+                  onChange={(e) => setNote(e.target.value.slice(0, 150))}
+                  placeholder="예: 끝부분이 어색한 것 같아요 / 이 장면이 잘 전달되는지 궁금해요"
+                  className="mt-1.5 w-full px-4 py-3 rounded-md text-sm border font-normal"
+                  style={{ borderColor: PALETTE.paperDeep, backgroundColor: "white", color: PALETTE.text }}
+                />
+              </label>
             </div>
 
             <div>
@@ -573,10 +570,9 @@ export default function StudentFlow() {
                 글 다시 보기
               </button>
               <button
-                disabled={!selfLevel}
                 onClick={() => sendToEditor(text)}
                 className="px-5 py-2.5 rounded-md text-sm font-bold"
-                style={{ backgroundColor: PALETTE.ink, color: PALETTE.paper, opacity: selfLevel ? 1 : 0.35 }}
+                style={{ backgroundColor: PALETTE.ink, color: PALETTE.paper }}
               >
                 편집자에게 보내기
               </button>
@@ -602,16 +598,105 @@ export default function StudentFlow() {
               </div>
             )}
             <FeedbackView feedback={feedback} />
+
+            <div className="rounded-lg p-5 border" style={{ borderColor: PALETTE.paperDeep, backgroundColor: "white" }}>
+              <p className="text-sm font-bold mb-1" style={{ color: PALETTE.text }}>🛠 내 글을 어떻게 고쳐 볼까요?</p>
+              <p className="text-xs mb-3" style={{ color: PALETTE.textMuted }}>
+                편집자의 의견을 모두 따를 필요는 없어요. 내 글에 필요하다고 생각하는 것만 골라요.
+              </p>
+              {(feedback.detective_feedback || []).length > 0 && (
+                <ul className="flex flex-col gap-2 mb-3">
+                  {feedback.detective_feedback.map((d, i) => {
+                    const on = planWill.includes(i);
+                    return (
+                      <li key={i}>
+                        <button
+                          onClick={() => setPlanWill(on ? planWill.filter((x) => x !== i) : [...planWill, i])}
+                          className="w-full text-left flex items-start gap-2 px-3 py-2 rounded-md border text-xs leading-relaxed"
+                          style={{
+                            borderColor: on ? PALETTE.ink : PALETTE.paperDeep,
+                            backgroundColor: on ? PALETTE.paperDeep : "white",
+                            color: PALETTE.text,
+                          }}
+                        >
+                          <span className="font-bold">{on ? "☑" : "☐"}</span>
+                          <span>고쳐 볼래요 — {d.question}</span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+              <input
+                value={planNote}
+                onChange={(e) => setPlanNote(e.target.value.slice(0, 150))}
+                placeholder="나는 이렇게 고쳐 볼 거예요 (한 줄, 쓰고 싶을 때만)"
+                className="w-full px-3 py-2.5 rounded-md text-sm border"
+                style={{ borderColor: PALETTE.paperDeep, backgroundColor: "white", color: PALETTE.text }}
+              />
+            </div>
+
+            {revisionRound >= 2 && (
+              <div className="rounded-md px-4 py-3 text-sm font-bold" style={{ backgroundColor: "#FBEFE0", color: PALETTE.text }}>
+                ✨ 벌써 {revisionRound + 1}번이나 다듬었어요! 이제는 편집자의 의견보다 내 마음에 드는지가 더 중요해요. 이만하면 마무리해 볼까요?
+              </div>
+            )}
+
             <div className="flex justify-between items-center mt-2">
-              <button
-                onClick={() => {
-                  setRevisionRound((r) => r + 1);
-                  setStep("compose");
-                }}
-                className="text-sm font-bold underline"
-                style={{ color: PALETTE.textMuted }}
-              >
+              <button onClick={goRevise} className="text-sm font-bold underline" style={{ color: PALETTE.textMuted }}>
                 고쳐 쓰러 가기
+              </button>
+              <button onClick={goReflect} className="px-5 py-2.5 rounded-md text-sm font-bold" style={{ backgroundColor: PALETTE.ink, color: PALETTE.paper }}>
+                방송 준비 완료
+              </button>
+            </div>
+          </div>
+        )}
+
+        {step === "reflect" && activity && (
+          <div className="flex flex-col gap-5">
+            <div>
+              <h2 className="sayeon-serif text-lg font-bold mb-1" style={{ color: PALETTE.text }}>마무리 돌아보기 🔍</h2>
+              <p className="text-sm" style={{ color: PALETTE.textMuted }}>
+                {versions.length > 1 ? "처음 글과 지금 글을 비교해 보고, 한 줄씩만 적어 봐요." : "내 글을 한 번 더 읽어 보고, 한 줄씩만 적어 봐요."}
+              </p>
+            </div>
+
+            {versions.length > 1 && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="rounded-lg p-4 border" style={{ borderColor: PALETTE.paperDeep, backgroundColor: "white" }}>
+                  <p className="text-xs font-bold mb-2" style={{ color: PALETTE.textMuted }}>처음 글</p>
+                  <p className="text-xs leading-6 whitespace-pre-wrap sayeon-serif" style={{ color: PALETTE.text }}>{versions[0].text}</p>
+                </div>
+                <div className="rounded-lg p-4 border" style={{ borderColor: PALETTE.gold, backgroundColor: "white" }}>
+                  <p className="text-xs font-bold mb-2" style={{ color: PALETTE.gold }}>지금 글</p>
+                  <p className="text-xs leading-6 whitespace-pre-wrap sayeon-serif" style={{ color: PALETTE.text }}>{text}</p>
+                </div>
+              </div>
+            )}
+
+            <label className="block text-xs font-bold" style={{ color: PALETTE.textMuted }}>
+              {versions.length > 1 ? "처음 글보다 달라진 곳은 어디인가요?" : "이 글에서 가장 마음에 드는 곳은 어디인가요?"}
+              <input
+                value={refChanged}
+                onChange={(e) => setRefChanged(e.target.value.slice(0, 200))}
+                className="mt-1.5 w-full px-4 py-3 rounded-md text-sm border font-normal"
+                style={{ borderColor: PALETTE.paperDeep, backgroundColor: "white", color: PALETTE.text }}
+              />
+            </label>
+            <label className="block text-xs font-bold" style={{ color: PALETTE.textMuted }}>
+              다음 글쓰기에서 또 해 보고 싶은 것은 무엇인가요?
+              <input
+                value={refNext}
+                onChange={(e) => setRefNext(e.target.value.slice(0, 200))}
+                className="mt-1.5 w-full px-4 py-3 rounded-md text-sm border font-normal"
+                style={{ borderColor: PALETTE.paperDeep, backgroundColor: "white", color: PALETTE.text }}
+              />
+            </label>
+
+            <div className="flex justify-between items-center mt-2">
+              <button onClick={() => setStep("feedback")} className="text-sm font-bold underline" style={{ color: PALETTE.textMuted }}>
+                돌아가기
               </button>
               <button onClick={finishUp} className="px-5 py-2.5 rounded-md text-sm font-bold" style={{ backgroundColor: PALETTE.ink, color: PALETTE.paper }}>
                 방송 준비 완료

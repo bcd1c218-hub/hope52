@@ -14,6 +14,7 @@ export default async function handler(req, res) {
     focus: Array.isArray(rawOptions.focus) ? rawOptions.focus.filter((f) => FOCUS_OK.includes(f)) : ["all"],
   };
   if (options.focus.length === 0) options.focus = ["all"];
+  options.note = typeof rawOptions.note === "string" ? rawOptions.note.trim().slice(0, 150) : "";
   if (!text || !activity) {
     return res.status(400).json({ error: "text와 activity가 필요해요." });
   }

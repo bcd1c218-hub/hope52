@@ -1,20 +1,33 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // 학생 제출물: 로그인 없이 쓰는 학급 도구이므로 읽기/쓰기를 열어두되,
-    // 삭제와 임의 필드 수정을 막아 실수로 데이터가 사라지는 것을 방지합니다.
+    // ── 원고 편집실 ────────────────────────────────────
+    // 학생 제출물: 삭제는 막아서 실수로 데이터가 사라지지 않게 합니다.
     match /submissions/{docId} {
       allow read: if true;
       allow create: if true;
       allow update: if true;
       allow delete: if false;
     }
-
-    // 자유 코너: 한 번 만들어지면 수정/삭제하지 않습니다.
+    // 자유 코너: 선생님 화면에서 지울 수 있도록 삭제를 허용합니다.
     match /customActivities/{docId} {
       allow read: if true;
       allow create: if true;
       allow update: if false;
+      allow delete: if true;
+    }
+
+    // ── 질문 편집실 ────────────────────────────────────
+    match /questionSessions/{docId} {
+      allow read: if true;
+      allow create: if true;
+      allow update: if true;
+      allow delete: if false;
+    }
+    match /interviewSessions/{docId} {
+      allow read: if true;
+      allow create: if true;
+      allow update: if true;
       allow delete: if false;
     }
 

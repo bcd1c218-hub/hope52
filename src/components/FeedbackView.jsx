@@ -23,6 +23,12 @@ export default function FeedbackView({ feedback, showLevel = false }) {
             .filter(Boolean)
             .join(", ")}{" "}
           · {DEPTH_OPTIONS.find((d) => d.id === feedback.options.depth)?.label || "힌트 질문만"}
+          {feedback.options.note ? (
+            <>
+              <br />
+              편집자에게 한 말: “{feedback.options.note}”
+            </>
+          ) : null}
         </p>
       )}
       <div
