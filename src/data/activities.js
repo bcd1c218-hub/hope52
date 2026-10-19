@@ -43,4 +43,15 @@ export const DEFAULT_ACTIVITIES = [
     contentFocus:
       "이 글을 읽을 사람이 누구인지 분명히 드러나는지, 왜 쓰는지 목적(제안·의견 / 안내·소개 / 정보·나눔)이 잘 보이는지, 제목을 지었다면 내용을 잘 나타내는 제목인지",
   },
+  {
+    id: "question",
+    kind: "question",
+    emoji: "❓",
+    label: "질문 만들기",
+    icon: "PenLine",
+    tagline: "내 질문을 더 좋은 질문으로",
+    writingPrompt:
+      "수업을 하면서 궁금한 것을 질문으로 써 보세요. 편집자 AI가 답을 알려 주는 대신, 내 질문이 더 좋은 질문이 되도록 도와줄 거예요.",
+    contentFocus: "",
+  },
 ];

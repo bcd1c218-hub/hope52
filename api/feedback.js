@@ -1,4 +1,4 @@
-import { extractJson, feedbackPrompt } from "../lib/prompts.js";
+import { extractJson, feedbackPrompt, questionCoachPrompt } from "../lib/prompts.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -7,7 +7,10 @@ export default async function handler(req, res) {
 
   const { text, activity, previous } = req.body || {};
   const rawOptions = (req.body && req.body.options) || {};
-  const FOCUS_OK = ["all", "opening", "content", "flow", "expression", "ending", "spelling"];
+  const isQuestion = !!activity && activity.kind === "question";
+  const FOCUS_OK = isQuestion
+    ? ["all", "clear", "deeper", "method", "spelling"]
+    : ["all", "opening", "content", "flow", "expression", "ending", "spelling"];
   const options = {
     selfLevel: ["low", "mid", "high", "unsure"].includes(rawOptions.selfLevel) ? rawOptions.selfLevel : "unsure",
     depth: rawOptions.depth === "concrete" ? "concrete" : "hint",
@@ -15,6 +18,9 @@ export default async function handler(req, res) {
   };
   if (options.focus.length === 0) options.focus = ["all"];
   options.note = typeof rawOptions.note === "string" ? rawOptions.note.trim().slice(0, 150) : "";
+  if (isQuestion) {
+    options.topic = typeof rawOptions.topic === "string" ? rawOptions.topic.trim().slice(0, 100) : "";
+  }
   if (!text || !activity) {
     return res.status(400).json({ error: "text와 activity가 필요해요." });
   }
@@ -34,7 +40,7 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         model: "claude-sonnet-4-6",
         max_tokens: 1800,
-        messages: [{ role: "user", content: [{ type: "text", text: feedbackPrompt(text, activity, previous, options) }] }],
+        messages: [{ role: "user", content: [{ type: "text", text: isQuestion ? questionCoachPrompt(text, activity, previous, options) : feedbackPrompt(text, activity, previous, options) }] }],
       }),
     });
 

@@ -15,7 +15,7 @@ import { DEFAULT_ACTIVITIES } from "../data/activities.js";
 import { getIcon } from "../iconMap.js";
 import { StageTracker, OnAirBadge } from "./Shared.jsx";
 import FeedbackView from "./FeedbackView.jsx";
-import { SELF_LEVELS, FOCUS_OPTIONS, DEPTH_OPTIONS } from "../data/feedbackOptions.js";
+import { SELF_LEVELS, FOCUS_OPTIONS, QUESTION_FOCUS_OPTIONS, DEPTH_OPTIONS } from "../data/feedbackOptions.js";
 import { requestOcr, requestFeedback, fileToBase64 } from "../api.js";
 import { fetchCustomActivities } from "../services/customActivities.js";
 import { createSubmission, addRevision, markCompleted, findActiveSubmission, updateLastVersion } from "../services/submissions.js";
@@ -35,6 +35,7 @@ export default function StudentFlow() {
   const [focus, setFocus] = useState(["all"]);
   const [depth, setDepth] = useState("hint");
   const [note, setNote] = useState("");
+  const [topic, setTopic] = useState("");
   const [planWill, setPlanWill] = useState([]);
   const [planNote, setPlanNote] = useState("");
   const [refChanged, setRefChanged] = useState("");
@@ -61,7 +62,19 @@ export default function StudentFlow() {
     ? 2
     : 0;
 
+  // "질문 만들기" 코너인지 여부. 다른 코너는 이 값이 false라서 예전과 똑같이 동작해요.
+  const isQuestion = activity?.kind === "question";
+  const unit = isQuestion ? "질문" : "글";
+  const focusOptions = isQuestion ? QUESTION_FOCUS_OPTIONS : FOCUS_OPTIONS;
+
   async function chooseActivity(preset) {
+    // 코너마다 쓰는 '받고 싶은 부분' 항목이 달라서, 맞지 않는 선택만 걸러 냅니다.
+    const validIds = (preset.kind === "question" ? QUESTION_FOCUS_OPTIONS : FOCUS_OPTIONS).map((f) => f.id);
+    setFocus((prev) => {
+      const kept = prev.filter((id) => validIds.includes(id));
+      return kept.length ? kept : ["all"];
+    });
+    setTopic("");
     setActivity(preset);
     await resumeOrStart(preset);
   }
@@ -82,6 +95,7 @@ export default function StudentFlow() {
         setVersions(existing.versions);
         setText(last.text || "");
         setFeedback(last.feedback || null);
+        setTopic(last.feedback?.options?.topic || "");
         setRevisionRound(existing.versions.length);
         setResumed(true);
         setStep("feedback");
@@ -149,13 +163,14 @@ export default function StudentFlow() {
     try {
       const prev = versions && versions.length ? versions[versions.length - 1] : null;
       const options = { selfLevel: selfLevel || "unsure", focus, depth, note: note.trim() };
+      if (isQuestion) options.topic = topic.trim();
       const result = await requestFeedback({
         text: finalText,
         activity,
         previous: prev ? { text: prev.text, feedback: prev.feedback, plan: prev.plan } : null,
         options,
       });
-      const fb = { ...result, options };
+      const fb = { ...result, options: isQuestion ? { ...options, corner: "question" } : options };
       setFeedback(fb);
       setPlanWill([]);
       setPlanNote("");
@@ -201,7 +216,7 @@ export default function StudentFlow() {
   }
 
   async function finishUp() {
-    const changedLabel = versions.length > 1 ? "처음 글보다 달라진 곳" : "이 글에서 가장 마음에 드는 곳";
+    const changedLabel = versions.length > 1 ? `처음 ${unit}보다 달라진 곳` : `이 ${unit}에서 가장 마음에 드는 곳`;
     const reflection = { changedLabel, changed: refChanged.trim(), next: refNext.trim() };
     if (submissionId) {
       try {
@@ -227,6 +242,7 @@ export default function StudentFlow() {
     setFocus(["all"]);
     setDepth("hint");
     setNote("");
+    setTopic("");
     setPlanWill([]);
     setPlanNote("");
     setRefChanged("");
@@ -322,7 +338,11 @@ export default function StudentFlow() {
                     className="flex flex-col items-start gap-2 p-4 rounded-lg border text-left transition-transform hover:-translate-y-0.5"
                     style={{ borderColor: PALETTE.paperDeep, backgroundColor: "white" }}
                   >
-                    <Icon size={20} style={{ color: PALETTE.gold }} />
+                    {a.emoji ? (
+                      <span className="text-xl leading-none">{a.emoji}</span>
+                    ) : (
+                      <Icon size={20} style={{ color: PALETTE.gold }} />
+                    )}
                     <span className="text-sm font-bold" style={{ color: PALETTE.text }}>{a.label}</span>
                     <span className="text-xs leading-snug" style={{ color: PALETTE.textMuted }}>{a.tagline}</span>
                   </button>
@@ -409,6 +429,18 @@ export default function StudentFlow() {
                 ))}
               </div>
             )}
+            {isQuestion && (
+              <label className="block mb-3 text-xs font-bold" style={{ color: PALETTE.textMuted }}>
+                무엇에 대한 질문인가요? (주제, 선택 입력)
+                <input
+                  value={topic}
+                  onChange={(e) => setTopic(e.target.value.slice(0, 100))}
+                  placeholder="예: 고려 시대 사람들의 생활 / 식물이 자라는 조건 (쓰지 않아도 돼요)"
+                  className="mt-1.5 w-full px-4 py-3 rounded-md text-sm border font-normal"
+                  style={{ borderColor: PALETTE.paperDeep, backgroundColor: "white", color: PALETTE.text }}
+                />
+              </label>
+            )}
             <textarea
               value={ocrDraft}
               onChange={(e) => setOcrDraft(e.target.value)}
@@ -435,7 +467,7 @@ export default function StudentFlow() {
         {step === "compose" && activity && (
           <div>
             <h2 className="sayeon-serif text-lg font-bold mb-1" style={{ color: PALETTE.text }}>
-              {revisionRound > 0 ? "고쳐 쓰기" : `${activity.label} 쓰기`}
+              {revisionRound > 0 ? (isQuestion ? "질문 고쳐 쓰기" : "고쳐 쓰기") : isQuestion ? "내 질문 쓰기" : `${activity.label} 쓰기`}
             </h2>
             <p className="text-sm mb-4" style={{ color: PALETTE.textMuted }}>{activity.writingPrompt}</p>
             {revisionRound > 0 && (() => {
@@ -452,11 +484,23 @@ export default function StudentFlow() {
                 </div>
               );
             })()}
+            {isQuestion && (
+              <label className="block mb-3 text-xs font-bold" style={{ color: PALETTE.textMuted }}>
+                무엇에 대한 질문인가요? (주제, 선택 입력)
+                <input
+                  value={topic}
+                  onChange={(e) => setTopic(e.target.value.slice(0, 100))}
+                  placeholder="예: 고려 시대 사람들의 생활 / 식물이 자라는 조건 (쓰지 않아도 돼요)"
+                  className="mt-1.5 w-full px-4 py-3 rounded-md text-sm border font-normal"
+                  style={{ borderColor: PALETTE.paperDeep, backgroundColor: "white", color: PALETTE.text }}
+                />
+              </label>
+            )}
             <textarea
               value={text}
               onChange={(e) => setText(e.target.value)}
-              rows={11}
-              placeholder="완벽하지 않아도 괜찮아요. 내 생각을 솔직하게 적어 보세요..."
+              rows={isQuestion ? 5 : 11}
+              placeholder={isQuestion ? "내가 궁금한 것을 질문으로 써 보세요. 완벽하지 않아도 괜찮아요." : "완벽하지 않아도 괜찮아요. 내 생각을 솔직하게 적어 보세요..."}
               className="w-full p-4 rounded-md text-sm leading-8 border sayeon-serif"
               style={{ ...GRID_BG, borderColor: PALETTE.paperDeep, backgroundColor: "white", color: PALETTE.text }}
             />
@@ -478,12 +522,12 @@ export default function StudentFlow() {
             <div>
               <h2 className="sayeon-serif text-lg font-bold mb-1" style={{ color: PALETTE.text }}>피드백 주문서 📝</h2>
               <p className="text-sm" style={{ color: PALETTE.textMuted }}>
-                내 글에 꼭 필요한 도움만 받아 봐요. 정답은 없으니 솔직하게 골라 주세요.
+                내 {unit}에 꼭 필요한 도움만 받아 봐요. 정답은 없으니 솔직하게 골라 주세요.
               </p>
             </div>
 
             <div>
-              <p className="text-sm font-bold mb-1" style={{ color: PALETTE.text }}>① 내 글은 지금 어디쯤일까요?</p>
+              <p className="text-sm font-bold mb-1" style={{ color: PALETTE.text }}>① 내 {unit}은 지금 어디쯤일까요?</p>
               <p className="text-xs mb-2" style={{ color: PALETTE.textMuted }}>건너뛰어도 돼요.</p>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 {SELF_LEVELS.map((lv) => {
@@ -511,7 +555,7 @@ export default function StudentFlow() {
               <p className="text-sm font-bold mb-1" style={{ color: PALETTE.text }}>② 어떤 부분의 피드백을 받고 싶나요?</p>
               <p className="text-xs mb-2" style={{ color: PALETTE.textMuted }}>여러 개를 골라도 돼요.</p>
               <div className="flex flex-wrap gap-2">
-                {FOCUS_OPTIONS.map((f) => {
+                {focusOptions.map((f) => {
                   const on = focus.includes(f.id);
                   return (
                     <button
@@ -534,7 +578,7 @@ export default function StudentFlow() {
                 <input
                   value={note}
                   onChange={(e) => setNote(e.target.value.slice(0, 150))}
-                  placeholder="예: 끝부분이 어색한 것 같아요 / 이 장면이 잘 전달되는지 궁금해요"
+                  placeholder={isQuestion ? "예: 너무 짧은 것 같아요 / 더 궁금한 걸로 바꾸고 싶어요" : "예: 끝부분이 어색한 것 같아요 / 이 장면이 잘 전달되는지 궁금해요"}
                   className="mt-1.5 w-full px-4 py-3 rounded-md text-sm border font-normal"
                   style={{ borderColor: PALETTE.paperDeep, backgroundColor: "white", color: PALETTE.text }}
                 />
@@ -567,7 +611,7 @@ export default function StudentFlow() {
 
             <div className="flex justify-between items-center mt-2">
               <button onClick={() => setStep("compose")} className="text-sm font-bold underline" style={{ color: PALETTE.textMuted }}>
-                글 다시 보기
+                {unit} 다시 보기
               </button>
               <button
                 onClick={() => sendToEditor(text)}
@@ -600,9 +644,9 @@ export default function StudentFlow() {
             <FeedbackView feedback={feedback} />
 
             <div className="rounded-lg p-5 border" style={{ borderColor: PALETTE.paperDeep, backgroundColor: "white" }}>
-              <p className="text-sm font-bold mb-1" style={{ color: PALETTE.text }}>🛠 내 글을 어떻게 고쳐 볼까요?</p>
+              <p className="text-sm font-bold mb-1" style={{ color: PALETTE.text }}>🛠 내 {unit}을 어떻게 고쳐 볼까요?</p>
               <p className="text-xs mb-3" style={{ color: PALETTE.textMuted }}>
-                편집자의 의견을 모두 따를 필요는 없어요. 내 글에 필요하다고 생각하는 것만 골라요.
+                편집자의 의견을 모두 따를 필요는 없어요. 내 {unit}에 필요하다고 생각하는 것만 골라요.
               </p>
               {(feedback.detective_feedback || []).length > 0 && (
                 <ul className="flex flex-col gap-2 mb-3">
@@ -658,25 +702,25 @@ export default function StudentFlow() {
             <div>
               <h2 className="sayeon-serif text-lg font-bold mb-1" style={{ color: PALETTE.text }}>마무리 돌아보기 🔍</h2>
               <p className="text-sm" style={{ color: PALETTE.textMuted }}>
-                {versions.length > 1 ? "처음 글과 지금 글을 비교해 보고, 한 줄씩만 적어 봐요." : "내 글을 한 번 더 읽어 보고, 한 줄씩만 적어 봐요."}
+                {versions.length > 1 ? `처음 ${unit}과 지금 ${unit}을 비교해 보고, 한 줄씩만 적어 봐요.` : `내 ${unit}을 한 번 더 읽어 보고, 한 줄씩만 적어 봐요.`}
               </p>
             </div>
 
             {versions.length > 1 && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="rounded-lg p-4 border" style={{ borderColor: PALETTE.paperDeep, backgroundColor: "white" }}>
-                  <p className="text-xs font-bold mb-2" style={{ color: PALETTE.textMuted }}>처음 글</p>
+                  <p className="text-xs font-bold mb-2" style={{ color: PALETTE.textMuted }}>처음 {unit}</p>
                   <p className="text-xs leading-6 whitespace-pre-wrap sayeon-serif" style={{ color: PALETTE.text }}>{versions[0].text}</p>
                 </div>
                 <div className="rounded-lg p-4 border" style={{ borderColor: PALETTE.gold, backgroundColor: "white" }}>
-                  <p className="text-xs font-bold mb-2" style={{ color: PALETTE.gold }}>지금 글</p>
+                  <p className="text-xs font-bold mb-2" style={{ color: PALETTE.gold }}>지금 {unit}</p>
                   <p className="text-xs leading-6 whitespace-pre-wrap sayeon-serif" style={{ color: PALETTE.text }}>{text}</p>
                 </div>
               </div>
             )}
 
             <label className="block text-xs font-bold" style={{ color: PALETTE.textMuted }}>
-              {versions.length > 1 ? "처음 글보다 달라진 곳은 어디인가요?" : "이 글에서 가장 마음에 드는 곳은 어디인가요?"}
+              {versions.length > 1 ? `처음 ${unit}보다 달라진 곳은 어디인가요?` : `이 ${unit}에서 가장 마음에 드는 곳은 어디인가요?`}
               <input
                 value={refChanged}
                 onChange={(e) => setRefChanged(e.target.value.slice(0, 200))}

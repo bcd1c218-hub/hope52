@@ -125,7 +125,10 @@ export default function TeacherDashboard() {
                 {filtered.map((s) => (
                   <tr key={s.id} className="border-t" style={{ borderColor: PALETTE.paperDeep, backgroundColor: "white" }}>
                     <td className="px-4 py-2.5" style={{ color: PALETTE.text }}>{s.studentName}</td>
-                    <td className="px-4 py-2.5" style={{ color: PALETTE.text }}>{s.activityLabel}</td>
+                    <td className="px-4 py-2.5" style={{ color: PALETTE.text }}>
+                      {s.activityId === "question" && <span className="mr-1">❓</span>}
+                      {s.activityLabel}
+                    </td>
                     <td className="px-4 py-2.5">
                       <span
                         className="text-xs font-bold px-2 py-0.5 rounded-full"
@@ -188,11 +191,18 @@ export default function TeacherDashboard() {
                 {selected.reflection.next && <p>· 다음에 해 보고 싶은 것: {selected.reflection.next}</p>}
               </div>
             )}
+            {selected.activityId === "question" && (selected.versions || []).length > 1 && (
+              <div className="rounded-lg p-4 mb-4 text-sm leading-relaxed" style={{ backgroundColor: "white", color: PALETTE.text, border: `1px solid ${PALETTE.paperDeep}` }}>
+                <p className="text-xs font-bold mb-2" style={{ color: PALETTE.gold }}>❓ 질문의 변화 (1차 → 최근)</p>
+                <p><b>1차</b> · {selected.versions[0].text}</p>
+                <p className="mt-1"><b>{selected.versions.length}차</b> · {selected.versions[selected.versions.length - 1].text}</p>
+              </div>
+            )}
             <div className="flex flex-col gap-6">
               {(selected.versions || []).map((v, i) => (
                 <div key={i} className="border-t pt-4" style={{ borderColor: PALETTE.paperDeep }}>
                   <p className="text-xs font-bold mb-2" style={{ color: PALETTE.gold }}>
-                    {i + 1}번째 원고 · {new Date(v.submittedAt).toLocaleString("ko-KR")}
+                    {i + 1}번째 {selected.activityId === "question" ? "질문" : "원고"} · {new Date(v.submittedAt).toLocaleString("ko-KR")}
                   </p>
                   <p className="text-sm leading-7 whitespace-pre-wrap mb-3 sayeon-serif" style={{ color: PALETTE.text }}>
                     {v.text}

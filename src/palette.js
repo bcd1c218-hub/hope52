@@ -30,4 +30,7 @@ export const CATEGORY_STYLE = {
   "표현": { bg: PALETTE.detectiveSoft, fg: PALETTE.detective, label: "표현" },
   "처음": { bg: PALETTE.contentSoft, fg: PALETTE.content, label: "처음 부분" },
   "마무리": { bg: PALETTE.structureSoft, fg: PALETTE.structure, label: "끝부분" },
+  "분명함": { bg: PALETTE.contentSoft, fg: PALETTE.content, label: "질문의 분명함" },
+  "깊이": { bg: PALETTE.structureSoft, fg: PALETTE.structure, label: "질문의 깊이" },
+  "찾는 방법": { bg: PALETTE.detectiveSoft, fg: PALETTE.detective, label: "답을 찾는 방법" },
 };

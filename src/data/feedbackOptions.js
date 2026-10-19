@@ -15,6 +15,17 @@ export const FOCUS_OPTIONS = [
   { id: "spelling", label: "맞춤법·띄어쓰기" },
 ];
 
+// "질문 만들기" 코너에서만 쓰는 '받고 싶은 부분' 선택지입니다.
+export const QUESTION_FOCUS_OPTIONS = [
+  { id: "all", label: "전체적으로" },
+  { id: "clear", label: "질문이 분명한지" },
+  { id: "deeper", label: "더 깊은 질문으로 키우기" },
+  { id: "method", label: "답을 찾는 방법" },
+  { id: "spelling", label: "맞춤법·띄어쓰기" },
+];
+
+export const ALL_FOCUS_LABELS = [...FOCUS_OPTIONS, ...QUESTION_FOCUS_OPTIONS];
+
 export const DEPTH_OPTIONS = [
   { id: "hint", label: "힌트 질문만", desc: "스스로 생각해 볼래요" },
   { id: "concrete", label: "구체적으로", desc: "이렇게 해 볼 수 있다는 방법도 알려 주세요" },

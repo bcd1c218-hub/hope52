@@ -1,6 +1,6 @@
 import { Sparkles, Search, CheckCircle2 } from "lucide-react";
 import { PALETTE, CATEGORY_STYLE } from "../palette.js";
-import { FOCUS_OPTIONS, DEPTH_OPTIONS, AI_LEVEL_LABEL, SELF_LEVEL_LABEL } from "../data/feedbackOptions.js";
+import { ALL_FOCUS_LABELS, DEPTH_OPTIONS, AI_LEVEL_LABEL, SELF_LEVEL_LABEL } from "../data/feedbackOptions.js";
 
 export default function FeedbackView({ feedback, showLevel = false }) {
   const detectiveFeedback = Array.isArray(feedback.detective_feedback) ? feedback.detective_feedback : [];
@@ -19,10 +19,16 @@ export default function FeedbackView({ feedback, showLevel = false }) {
         <p className="text-xs" style={{ color: PALETTE.textMuted }}>
           내가 고른 것:{" "}
           {(feedback.options.focus || ["all"])
-            .map((id) => FOCUS_OPTIONS.find((f) => f.id === id)?.label)
+            .map((id) => ALL_FOCUS_LABELS.find((f) => f.id === id)?.label)
             .filter(Boolean)
             .join(", ")}{" "}
           · {DEPTH_OPTIONS.find((d) => d.id === feedback.options.depth)?.label || "힌트 질문만"}
+          {feedback.options.topic ? (
+            <>
+              <br />
+              질문의 주제: {feedback.options.topic}
+            </>
+          ) : null}
           {feedback.options.note ? (
             <>
               <br />
@@ -54,7 +60,7 @@ export default function FeedbackView({ feedback, showLevel = false }) {
           <div className="flex items-center gap-2 mb-3">
             <Search size={16} style={{ color: PALETTE.detective }} />
             <span className="text-xs font-bold tracking-wide" style={{ color: PALETTE.ink }}>
-              글 탐정
+              {feedback.options?.corner === "question" ? "질문 코치" : "글 탐정"}
             </span>
           </div>
           <ul className="flex flex-col gap-3">
