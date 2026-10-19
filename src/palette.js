@@ -28,4 +28,6 @@ export const CATEGORY_STYLE = {
   "내용": { bg: PALETTE.contentSoft, fg: PALETTE.content, label: "내용" },
   "구성": { bg: PALETTE.structureSoft, fg: PALETTE.structure, label: "구성" },
   "표현": { bg: PALETTE.detectiveSoft, fg: PALETTE.detective, label: "표현" },
+  "처음": { bg: PALETTE.contentSoft, fg: PALETTE.content, label: "처음 부분" },
+  "마무리": { bg: PALETTE.structureSoft, fg: PALETTE.structure, label: "끝부분" },
 };

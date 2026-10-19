@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { RefreshCcw, Printer, X, ChevronRight } from "lucide-react";
 import { PALETTE } from "../palette.js";
 import { fetchAllSubmissions } from "../services/submissions.js";
+import { AI_LEVEL_LABEL, SELF_LEVEL_LABEL } from "../data/feedbackOptions.js";
 import FeedbackView from "./FeedbackView.jsx";
 
 function formatTime(ts) {
@@ -89,6 +90,7 @@ export default function TeacherDashboard() {
                   <th className="text-left px-4 py-2.5 font-bold" style={{ color: PALETTE.text }}>코너</th>
                   <th className="text-left px-4 py-2.5 font-bold" style={{ color: PALETTE.text }}>상태</th>
                   <th className="text-left px-4 py-2.5 font-bold" style={{ color: PALETTE.text }}>제출 횟수</th>
+                  <th className="text-left px-4 py-2.5 font-bold" style={{ color: PALETTE.text }}>자기평가 / AI판단</th>
                   <th className="text-left px-4 py-2.5 font-bold" style={{ color: PALETTE.text }}>마지막 수정</th>
                   <th className="px-4 py-2.5" />
                 </tr>
@@ -111,6 +113,12 @@ export default function TeacherDashboard() {
                       </span>
                     </td>
                     <td className="px-4 py-2.5" style={{ color: PALETTE.text }}>{(s.versions || []).length}회</td>
+                    <td className="px-4 py-2.5" style={{ color: PALETTE.text }}>
+                      {(() => {
+                        const last = (s.versions || [])[(s.versions || []).length - 1]?.feedback;
+                        return `${SELF_LEVEL_LABEL[last?.options?.selfLevel] || "-"} / ${AI_LEVEL_LABEL[last?.ai_level] || "-"}`;
+                      })()}
+                    </td>
                     <td className="px-4 py-2.5" style={{ color: PALETTE.textMuted }}>{formatTime(s.updatedAt)}</td>
                     <td className="px-4 py-2.5 text-right">
                       <button onClick={() => setSelected(s)} className="flex items-center gap-1 text-xs font-bold" style={{ color: PALETTE.gold }}>
@@ -156,7 +164,7 @@ export default function TeacherDashboard() {
                   <p className="text-sm leading-7 whitespace-pre-wrap mb-3 sayeon-serif" style={{ color: PALETTE.text }}>
                     {v.text}
                   </p>
-                  {v.feedback && <FeedbackView feedback={v.feedback} />}
+                  {v.feedback && <FeedbackView feedback={v.feedback} showLevel />}
                 </div>
               ))}
             </div>

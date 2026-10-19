@@ -9,11 +9,11 @@ export async function requestOcr({ mediaType, base64 }) {
   return data;
 }
 
-export async function requestFeedback({ text, activity }) {
+export async function requestFeedback({ text, activity, previous, options }) {
   const res = await fetch("/api/feedback", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ text, activity }),
+    body: JSON.stringify({ text, activity, previous, options }),
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || "편집자 AI에게 원고를 보내는 중 문제가 생겼어요.");

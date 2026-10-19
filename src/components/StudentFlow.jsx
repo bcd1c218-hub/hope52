@@ -16,6 +16,7 @@ import { DEFAULT_ACTIVITIES } from "../data/activities.js";
 import { getIcon } from "../iconMap.js";
 import { StageTracker, OnAirBadge } from "./Shared.jsx";
 import FeedbackView from "./FeedbackView.jsx";
+import { SELF_LEVELS, FOCUS_OPTIONS, DEPTH_OPTIONS } from "../data/feedbackOptions.js";
 import { requestOcr, requestFeedback, fileToBase64 } from "../api.js";
 import { fetchCustomActivities, saveCustomActivity } from "../services/customActivities.js";
 import { createSubmission, addRevision, markCompleted, findActiveSubmission } from "../services/submissions.js";
@@ -34,6 +35,9 @@ export default function StudentFlow() {
   const [feedback, setFeedback] = useState(null);
   const [error, setError] = useState("");
   const [revisionRound, setRevisionRound] = useState(0);
+  const [selfLevel, setSelfLevel] = useState(null);
+  const [focus, setFocus] = useState(["all"]);
+  const [depth, setDepth] = useState("hint");
 
   const [submissionId, setSubmissionId] = useState(null);
   const [versions, setVersions] = useState([]);
@@ -48,7 +52,7 @@ export default function StudentFlow() {
       });
   }, []);
 
-  const stageIndex = ["start", "activity", "checkingResume", "method", "compose", "confirming"].includes(step)
+  const stageIndex = ["start", "activity", "checkingResume", "method", "compose", "confirming", "setup"].includes(step)
     ? 0
     : ["feedback", "loadingFeedback"].includes(step)
     ? 1
@@ -139,13 +143,39 @@ export default function StudentFlow() {
     }
   }
 
+  // 글을 다 쓴 뒤, 피드백을 받기 전에 "피드백 주문서"를 먼저 고릅니다.
+  function goSetup(finalText) {
+    setError("");
+    setText(finalText);
+    setResumed(false);
+    setStep("setup");
+  }
+
+  function toggleFocus(id) {
+    if (id === "all") {
+      setFocus(["all"]);
+      return;
+    }
+    const without = focus.filter((f) => f !== "all");
+    const next = without.includes(id) ? without.filter((f) => f !== id) : [...without, id];
+    setFocus(next.length ? next : ["all"]);
+  }
+
   async function sendToEditor(finalText) {
     setError("");
     setText(finalText);
     setResumed(false);
     setStep("loadingFeedback");
     try {
-      const fb = await requestFeedback({ text: finalText, activity });
+      const prev = versions && versions.length ? versions[versions.length - 1] : null;
+      const options = { selfLevel: selfLevel || "unsure", focus, depth };
+      const result = await requestFeedback({
+        text: finalText,
+        activity,
+        previous: prev ? { text: prev.text, feedback: prev.feedback } : null,
+        options,
+      });
+      const fb = { ...result, options };
       setFeedback(fb);
 
       if (!submissionId) {
@@ -188,6 +218,9 @@ export default function StudentFlow() {
     setFeedback(null);
     setError("");
     setRevisionRound(0);
+    setSelfLevel(null);
+    setFocus(["all"]);
+    setDepth("hint");
     setSubmissionId(null);
     setVersions([]);
     setResumed(false);
@@ -417,11 +450,11 @@ export default function StudentFlow() {
               </button>
               <button
                 disabled={!ocrDraft.trim()}
-                onClick={() => sendToEditor(ocrDraft)}
+                onClick={() => goSetup(ocrDraft)}
                 className="px-5 py-2.5 rounded-md text-sm font-bold"
                 style={{ backgroundColor: PALETTE.ink, color: PALETTE.paper, opacity: ocrDraft.trim() ? 1 : 0.35 }}
               >
-                맞아요, 편집자에게 보내기
+                맞아요, 다음으로
               </button>
             </div>
           </div>
@@ -444,9 +477,106 @@ export default function StudentFlow() {
             <div className="flex justify-end mt-4">
               <button
                 disabled={!text.trim()}
-                onClick={() => sendToEditor(text)}
+                onClick={() => goSetup(text)}
                 className="px-5 py-2.5 rounded-md text-sm font-bold"
                 style={{ backgroundColor: PALETTE.ink, color: PALETTE.paper, opacity: text.trim() ? 1 : 0.35 }}
+              >
+                다음으로
+              </button>
+            </div>
+          </div>
+        )}
+
+        {step === "setup" && activity && (
+          <div className="flex flex-col gap-6">
+            <div>
+              <h2 className="sayeon-serif text-lg font-bold mb-1" style={{ color: PALETTE.text }}>피드백 주문서 📝</h2>
+              <p className="text-sm" style={{ color: PALETTE.textMuted }}>
+                내가 원하는 방식으로 피드백을 받아 봐요. 정답은 없으니 솔직하게 골라 주세요.
+              </p>
+            </div>
+
+            <div>
+              <p className="text-sm font-bold mb-2" style={{ color: PALETTE.text }}>① 내 글은 지금 어느 정도인 것 같나요?</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {SELF_LEVELS.map((lv) => {
+                  const on = selfLevel === lv.id;
+                  return (
+                    <button
+                      key={lv.id}
+                      onClick={() => setSelfLevel(lv.id)}
+                      className="text-left px-4 py-3 rounded-lg border"
+                      style={{
+                        borderColor: on ? PALETTE.ink : PALETTE.paperDeep,
+                        backgroundColor: on ? PALETTE.ink : "white",
+                        color: on ? PALETTE.paper : PALETTE.text,
+                      }}
+                    >
+                      <span className="text-sm font-bold">{lv.emoji} {lv.label}</span>
+                      <span className="block text-xs mt-0.5" style={{ opacity: 0.8 }}>{lv.desc}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div>
+              <p className="text-sm font-bold mb-1" style={{ color: PALETTE.text }}>② 어떤 부분의 피드백을 받고 싶나요?</p>
+              <p className="text-xs mb-2" style={{ color: PALETTE.textMuted }}>여러 개를 골라도 돼요.</p>
+              <div className="flex flex-wrap gap-2">
+                {FOCUS_OPTIONS.map((f) => {
+                  const on = focus.includes(f.id);
+                  return (
+                    <button
+                      key={f.id}
+                      onClick={() => toggleFocus(f.id)}
+                      className="px-3.5 py-2 rounded-full text-sm font-bold border"
+                      style={{
+                        borderColor: on ? PALETTE.ink : PALETTE.paperDeep,
+                        backgroundColor: on ? PALETTE.ink : "white",
+                        color: on ? PALETTE.paper : PALETTE.text,
+                      }}
+                    >
+                      {f.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div>
+              <p className="text-sm font-bold mb-2" style={{ color: PALETTE.text }}>③ 어떻게 알려 줄까요?</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {DEPTH_OPTIONS.map((d) => {
+                  const on = depth === d.id;
+                  return (
+                    <button
+                      key={d.id}
+                      onClick={() => setDepth(d.id)}
+                      className="text-left px-4 py-3 rounded-lg border"
+                      style={{
+                        borderColor: on ? PALETTE.ink : PALETTE.paperDeep,
+                        backgroundColor: on ? PALETTE.ink : "white",
+                        color: on ? PALETTE.paper : PALETTE.text,
+                      }}
+                    >
+                      <span className="text-sm font-bold">{d.label}</span>
+                      <span className="block text-xs mt-0.5" style={{ opacity: 0.8 }}>{d.desc}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="flex justify-between items-center mt-2">
+              <button onClick={() => setStep("compose")} className="text-sm font-bold underline" style={{ color: PALETTE.textMuted }}>
+                글 다시 보기
+              </button>
+              <button
+                disabled={!selfLevel}
+                onClick={() => sendToEditor(text)}
+                className="px-5 py-2.5 rounded-md text-sm font-bold"
+                style={{ backgroundColor: PALETTE.ink, color: PALETTE.paper, opacity: selfLevel ? 1 : 0.35 }}
               >
                 편집자에게 보내기
               </button>

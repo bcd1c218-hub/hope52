@@ -5,7 +5,15 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const { text, activity } = req.body || {};
+  const { text, activity, previous } = req.body || {};
+  const rawOptions = (req.body && req.body.options) || {};
+  const FOCUS_OK = ["all", "opening", "content", "flow", "expression", "ending", "spelling"];
+  const options = {
+    selfLevel: ["low", "mid", "high", "unsure"].includes(rawOptions.selfLevel) ? rawOptions.selfLevel : "unsure",
+    depth: rawOptions.depth === "concrete" ? "concrete" : "hint",
+    focus: Array.isArray(rawOptions.focus) ? rawOptions.focus.filter((f) => FOCUS_OK.includes(f)) : ["all"],
+  };
+  if (options.focus.length === 0) options.focus = ["all"];
   if (!text || !activity) {
     return res.status(400).json({ error: "text와 activity가 필요해요." });
   }
@@ -24,8 +32,8 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-6",
-        max_tokens: 1300,
-        messages: [{ role: "user", content: [{ type: "text", text: feedbackPrompt(text, activity) }] }],
+        max_tokens: 1800,
+        messages: [{ role: "user", content: [{ type: "text", text: feedbackPrompt(text, activity, previous, options) }] }],
       }),
     });
 
