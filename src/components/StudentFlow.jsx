@@ -19,7 +19,8 @@ import { SELF_LEVELS, FOCUS_OPTIONS, QUESTION_FOCUS_OPTIONS, DEPTH_OPTIONS } fro
 import { requestOcr, requestFeedback, fileToBase64 } from "../api.js";
 import { fetchCustomActivities } from "../services/customActivities.js";
 import { CLASS_SIZE, classLabel } from "../data/classInfo.js";
-import { createSubmission, addRevision, markCompleted, findActiveSubmission, updateLastVersion } from "../services/submissions.js";
+import { createSubmission, addRevision, markCompleted, findActiveSubmission, updateLastVersion, fetchMySubmissions, saveDraft } from "../services/submissions.js";
+import { MyWorkList, MyHistory } from "./MyWork.jsx";
 
 export default function StudentFlow() {
   const [step, setStep] = useState("start");
@@ -47,6 +48,9 @@ export default function StudentFlow() {
   const [versions, setVersions] = useState([]);
   const [resumed, setResumed] = useState(false);
   const [checkingResume, setCheckingResume] = useState(false);
+  const [mySubs, setMySubs] = useState([]);
+  const [historySub, setHistorySub] = useState(null);
+  const [draftNotice, setDraftNotice] = useState("");
 
   useEffect(() => {
     fetchCustomActivities()
@@ -55,6 +59,39 @@ export default function StudentFlow() {
         // 커스텀 코너를 불러오지 못해도 기본 코너로 계속 진행합니다.
       });
   }, []);
+
+  // 쓰는 중인 글을 잠깐 멈출 때마다(1.5초) 자동으로 저장합니다.
+  // - 고쳐 쓰는 중(이미 피드백을 받은 글): 서버에 저장 → 다음 날 다른 기기에서도 이어 쓰기
+  // - 처음 쓰는 글(아직 보내기 전): 이 기기에만 저장 → 같은 휴대폰에서 다시 열면 되살림
+  const draftKey = activity && studentName.trim() ? `hope52-draft:${studentNo}:${studentName.trim()}:${activity.id}` : "";
+  useEffect(() => {
+    if (step !== "compose" || !activity) return undefined;
+    const timer = setTimeout(() => {
+      try {
+        if (draftKey && revisionRound === 0) localStorage.setItem(draftKey, text);
+      } catch (e) {
+        // 이 기기에 저장할 수 없어도 글쓰기는 계속할 수 있어요.
+      }
+      const lastText = versions.length ? versions[versions.length - 1].text : null;
+      if (submissionId && revisionRound > 0 && text !== lastText) {
+        saveDraft({ submissionId, draftText: text }).catch(() => {});
+      }
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [text, step]);
+
+  useEffect(() => {
+    if (step !== "compose" || revisionRound > 0 || text || !draftKey) return;
+    try {
+      const saved = localStorage.getItem(draftKey);
+      if (saved && saved.trim()) {
+        setText(saved);
+        setDraftNotice("이 기기에서 쓰다 만 글을 불러왔어요.");
+      }
+    } catch (e) {
+      // 불러오지 못하면 빈 칸에서 시작해요.
+    }
+  }, [step]);
 
   const stageIndex = ["start", "activity", "checkingResume", "method", "compose", "confirming", "setup"].includes(step)
     ? 0
@@ -77,8 +114,53 @@ export default function StudentFlow() {
       return kept.length ? kept : ["all"];
     });
     setTopic("");
+    setDraftNotice("");
     setActivity(preset);
     await resumeOrStart(preset);
+  }
+
+  // 저장된 글을 화면 상태로 불러옵니다. 고쳐 쓰다 만 글(draftText)이 있으면 그것도 되살립니다.
+  function applyExisting(existing) {
+    const last = existing.versions[existing.versions.length - 1];
+    setSubmissionId(existing.id);
+    setVersions(existing.versions);
+    const draft = existing.draftText && existing.draftText !== last.text ? existing.draftText : "";
+    setText(draft || last.text || "");
+    setDraftNotice(draft ? "지난번에 고쳐 쓰던 글을 불러왔어요." : "");
+    setFeedback(last.feedback || null);
+    setTopic(last.feedback?.options?.topic || "");
+    const items = last.plan && Array.isArray(last.plan.items) ? last.plan.items : [];
+    setPlanWill(items.map((it, i) => (it.will ? i : -1)).filter((i) => i >= 0));
+    setPlanNote((last.plan && last.plan.note) || "");
+    setRevisionRound(existing.versions.length);
+    setResumed(true);
+    setStep("feedback");
+  }
+
+  // 번호+이름으로 들어오면 먼저 "내 글 보관함"을 보여 줍니다. 쓴 글이 없으면 바로 코너 고르기로 갑니다.
+  async function openMyWork() {
+    setError("");
+    setStep("loadingMine");
+    try {
+      const list = await fetchMySubmissions({ studentName: studentName.trim(), studentNo });
+      const usable = list.filter((x) => Array.isArray(x.versions) && x.versions.length > 0);
+      setMySubs(usable);
+      setStep(usable.length ? "myWork" : "activity");
+    } catch (e) {
+      setStep("activity");
+    }
+  }
+
+  function continueSubmission(sub) {
+    const found = activities.find((a) => a.id === sub.activityId);
+    const act = found || { id: sub.activityId, label: sub.activityLabel || "글", writingPrompt: "" };
+    const validIds = (act.kind === "question" ? QUESTION_FOCUS_OPTIONS : FOCUS_OPTIONS).map((f) => f.id);
+    setFocus((prev) => {
+      const kept = prev.filter((id) => validIds.includes(id));
+      return kept.length ? kept : ["all"];
+    });
+    setActivity(act);
+    applyExisting(sub);
   }
 
   async function resumeOrStart(chosenActivity) {
@@ -92,15 +174,7 @@ export default function StudentFlow() {
     try {
       const existing = await findActiveSubmission({ studentName: name, studentNo, activityId: chosenActivity.id });
       if (existing && existing.versions && existing.versions.length > 0) {
-        const last = existing.versions[existing.versions.length - 1];
-        setSubmissionId(existing.id);
-        setVersions(existing.versions);
-        setText(last.text || "");
-        setFeedback(last.feedback || null);
-        setTopic(last.feedback?.options?.topic || "");
-        setRevisionRound(existing.versions.length);
-        setResumed(true);
-        setStep("feedback");
+        applyExisting(existing);
         setCheckingResume(false);
         return;
       }
@@ -186,6 +260,12 @@ export default function StudentFlow() {
         const nextVersions = await addRevision({ submissionId, versions, text: finalText, feedback: fb });
         setVersions(nextVersions);
       }
+      setDraftNotice("");
+      try {
+        if (draftKey) localStorage.removeItem(draftKey);
+      } catch (e) {
+        // 지우지 못해도 문제없어요.
+      }
 
       setStep("feedback");
     } catch (e) {
@@ -234,6 +314,9 @@ export default function StudentFlow() {
     setStep("start");
     setStudentName("");
     setStudentNo("");
+    setMySubs([]);
+    setHistorySub(null);
+    setDraftNotice("");
     setActivity(null);
     setText("");
     setOcrDraft("");
@@ -337,13 +420,37 @@ export default function StudentFlow() {
             </div>
             <button
               disabled={!studentName.trim() || !studentNo}
-              onClick={() => setStep("activity")}
+              onClick={openMyWork}
               className="mt-6 flex items-center gap-2 px-6 py-3 rounded-md text-sm font-bold transition-opacity"
               style={{ backgroundColor: PALETTE.ink, color: PALETTE.paper, opacity: studentName.trim() && studentNo ? 1 : 0.35 }}
             >
               편집실 들어가기 <ArrowRight size={15} />
             </button>
           </div>
+        )}
+
+        {step === "loadingMine" && (
+          <div className="flex flex-col items-center gap-3 py-20">
+            <Loader2 size={26} className="animate-spin" style={{ color: PALETTE.gold }} />
+            <p className="text-sm" style={{ color: PALETTE.textMuted }}>내 글을 찾고 있어요...</p>
+          </div>
+        )}
+
+        {step === "myWork" && (
+          <MyWorkList
+            studentName={studentName}
+            submissions={mySubs}
+            onNew={() => setStep("activity")}
+            onContinue={continueSubmission}
+            onHistory={(sub) => {
+              setHistorySub(sub);
+              setStep("history");
+            }}
+          />
+        )}
+
+        {step === "history" && historySub && (
+          <MyHistory submission={historySub} onBack={() => setStep("myWork")} onContinue={continueSubmission} />
         )}
 
         {step === "activity" && (
@@ -521,6 +628,11 @@ export default function StudentFlow() {
                   style={{ borderColor: PALETTE.paperDeep, backgroundColor: "white", color: PALETTE.text }}
                 />
               </label>
+            )}
+            {draftNotice && (
+              <p className="rounded-md px-4 py-2 mb-3 text-xs font-bold" style={{ backgroundColor: PALETTE.paperDeep, color: PALETTE.text }}>
+                💾 {draftNotice}
+              </p>
             )}
             <textarea
               value={text}

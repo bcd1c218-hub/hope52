@@ -48,6 +48,7 @@ export async function addRevision({ submissionId, versions, text, feedback }) {
   ];
   await updateDoc(ref, {
     currentText: text,
+    draftText: "",
     versions: nextVersions,
     updatedAt: serverTimestamp(),
   });
@@ -60,6 +61,7 @@ export async function markCompleted({ submissionId, finalText, reflection }) {
   await updateDoc(ref, {
     status: "completed",
     currentText: finalText,
+    draftText: "",
     ...(reflection ? { reflection } : {}),
     completedAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
@@ -91,6 +93,28 @@ export async function findActiveSubmission({ studentName, studentNo, activityId 
     if (!best || updatedMillis > bestMillis) best = data;
   });
   return best;
+}
+
+// 학생 한 명의 글을 모두 가져옵니다(코너·완성 여부 상관없이). 최근 것부터 줄 세웁니다.
+export async function fetchMySubmissions({ studentName, studentNo }) {
+  const q = query(collection(db, SUBMISSIONS), where("studentName", "==", studentName));
+  const snap = await getDocs(q);
+  const list = [];
+  snap.forEach((d) => {
+    const data = { id: d.id, ...d.data() };
+    // 번호가 둘 다 있는데 다르면 같은 이름의 다른 학생이므로 빼요.
+    if (studentNo && data.studentNo && String(data.studentNo) !== String(studentNo)) return;
+    list.push(data);
+  });
+  const ms = (x) => (x?.updatedAt?.toMillis ? x.updatedAt.toMillis() : 0);
+  return list.sort((a, b) => ms(b) - ms(a));
+}
+
+// 고쳐 쓰는 중인 글(아직 편집자에게 보내지 않은 글)을 자동으로 저장해 둡니다.
+// 다음 날 다시 들어와도 고치던 글이 남아 있게 하려는 것이에요.
+export async function saveDraft({ submissionId, draftText }) {
+  if (!submissionId) return;
+  await updateDoc(doc(db, SUBMISSIONS, submissionId), { draftText, draftAt: serverTimestamp() });
 }
 
 // 선생님이 "학생이 이 질문을 실제로 반영했는가"를 판정한 결과를 저장합니다.
