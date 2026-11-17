@@ -18,11 +18,13 @@ import FeedbackView from "./FeedbackView.jsx";
 import { SELF_LEVELS, FOCUS_OPTIONS, QUESTION_FOCUS_OPTIONS, DEPTH_OPTIONS } from "../data/feedbackOptions.js";
 import { requestOcr, requestFeedback, fileToBase64 } from "../api.js";
 import { fetchCustomActivities } from "../services/customActivities.js";
+import { CLASS_SIZE, classLabel } from "../data/classInfo.js";
 import { createSubmission, addRevision, markCompleted, findActiveSubmission, updateLastVersion } from "../services/submissions.js";
 
 export default function StudentFlow() {
   const [step, setStep] = useState("start");
   const [studentName, setStudentName] = useState("");
+  const [studentNo, setStudentNo] = useState("");
   const [activities, setActivities] = useState(DEFAULT_ACTIVITIES);
   const [activity, setActivity] = useState(null);
   const [text, setText] = useState("");
@@ -88,7 +90,7 @@ export default function StudentFlow() {
     setCheckingResume(true);
     setStep("checkingResume");
     try {
-      const existing = await findActiveSubmission({ studentName: name, activityId: chosenActivity.id });
+      const existing = await findActiveSubmission({ studentName: name, studentNo, activityId: chosenActivity.id });
       if (existing && existing.versions && existing.versions.length > 0) {
         const last = existing.versions[existing.versions.length - 1];
         setSubmissionId(existing.id);
@@ -177,7 +179,7 @@ export default function StudentFlow() {
       setNote("");
 
       if (!submissionId) {
-        const id = await createSubmission({ studentName, activity, text: finalText, feedback: fb });
+        const id = await createSubmission({ studentName, studentNo, activity, text: finalText, feedback: fb });
         setSubmissionId(id);
         setVersions([{ text: finalText, feedback: fb, submittedAt: new Date().toISOString() }]);
       } else {
@@ -231,6 +233,7 @@ export default function StudentFlow() {
   function startOver() {
     setStep("start");
     setStudentName("");
+    setStudentNo("");
     setActivity(null);
     setText("");
     setOcrDraft("");
@@ -297,23 +300,46 @@ export default function StudentFlow() {
               <br />
               어떤 글이든 편집자 AI가 함께 질문하며 다듬어 드려요.
             </p>
-            <div className="w-full max-w-xs">
-              <label className="block text-xs font-bold mb-1.5 text-left" style={{ color: PALETTE.textMuted }}>
-                이름
-              </label>
-              <input
-                value={studentName}
-                onChange={(e) => setStudentName(e.target.value)}
-                placeholder="이름을 적어주세요"
-                className="w-full px-4 py-3 rounded-md text-sm border"
-                style={{ borderColor: PALETTE.paperDeep, backgroundColor: "white", color: PALETTE.text }}
-              />
+            <div className="w-full max-w-xs flex flex-col gap-3">
+              <p className="text-xs text-left" style={{ color: PALETTE.textMuted }}>{classLabel()}</p>
+              <div className="flex gap-2">
+                <div className="shrink-0" style={{ width: 96 }}>
+                  <label htmlFor="student-no" className="block text-xs font-bold mb-1.5 text-left" style={{ color: PALETTE.textMuted }}>
+                    번호
+                  </label>
+                  <select
+                    id="student-no"
+                    value={studentNo}
+                    onChange={(e) => setStudentNo(e.target.value)}
+                    className="w-full px-3 py-3 rounded-md text-sm border"
+                    style={{ borderColor: PALETTE.paperDeep, backgroundColor: "white", color: PALETTE.text }}
+                  >
+                    <option value="">고르기</option>
+                    {Array.from({ length: CLASS_SIZE }, (_, i) => i + 1).map((n) => (
+                      <option key={n} value={n}>{n}번</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex-1">
+                  <label htmlFor="student-name" className="block text-xs font-bold mb-1.5 text-left" style={{ color: PALETTE.textMuted }}>
+                    이름
+                  </label>
+                  <input
+                    id="student-name"
+                    value={studentName}
+                    onChange={(e) => setStudentName(e.target.value)}
+                    placeholder="이름을 적어주세요"
+                    className="w-full px-4 py-3 rounded-md text-sm border"
+                    style={{ borderColor: PALETTE.paperDeep, backgroundColor: "white", color: PALETTE.text }}
+                  />
+                </div>
+              </div>
             </div>
             <button
-              disabled={!studentName.trim()}
+              disabled={!studentName.trim() || !studentNo}
               onClick={() => setStep("activity")}
               className="mt-6 flex items-center gap-2 px-6 py-3 rounded-md text-sm font-bold transition-opacity"
-              style={{ backgroundColor: PALETTE.ink, color: PALETTE.paper, opacity: studentName.trim() ? 1 : 0.35 }}
+              style={{ backgroundColor: PALETTE.ink, color: PALETTE.paper, opacity: studentName.trim() && studentNo ? 1 : 0.35 }}
             >
               편집실 들어가기 <ArrowRight size={15} />
             </button>

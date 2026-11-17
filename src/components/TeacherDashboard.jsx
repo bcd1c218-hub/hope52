@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { RefreshCcw, Printer, X, ChevronRight, Trash2 } from "lucide-react";
+import { RefreshCcw, Printer, X, ChevronRight, Trash2, Download, Lock } from "lucide-react";
+import { FlowView, DiffView, TrackView, SummaryView } from "./TeacherViews.jsx";
+import { downloadCsv, studentLabel } from "../lib/analyze.js";
+import { checkTeacherPassword } from "../api.js";
 import { PALETTE } from "../palette.js";
 import { fetchAllSubmissions } from "../services/submissions.js";
 import { fetchCustomActivities, saveCustomActivity, deleteCustomActivity } from "../services/customActivities.js";
@@ -13,13 +16,80 @@ function formatTime(ts) {
   return date.toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
+const PASS_KEY = "hope52-teacher-ok";
+
+// 선생님 화면 앞에 비밀번호 확인을 둡니다. 비밀번호는 서버(Vercel 환경변수 TEACHER_PASSCODE)에서만 확인해요.
 export default function TeacherDashboard() {
+  const [ok, setOk] = useState(() => {
+    try {
+      return sessionStorage.getItem(PASS_KEY) === "1";
+    } catch (e) {
+      return false;
+    }
+  });
+  const [pw, setPw] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  async function submit(e) {
+    e.preventDefault();
+    if (!pw || busy) return;
+    setBusy(true);
+    setErr("");
+    try {
+      const good = await checkTeacherPassword(pw);
+      if (good) {
+        try {
+          sessionStorage.setItem(PASS_KEY, "1");
+        } catch (e2) {
+          // 저장이 안 돼도 이번 화면에서는 계속 쓸 수 있어요.
+        }
+        setOk(true);
+      }
+    } catch (e3) {
+      setErr(e3.message || "비밀번호를 확인하지 못했어요.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (ok) return <Dashboard />;
+
+  return (
+    <div className="min-h-screen w-full flex items-center justify-center px-5" style={{ backgroundColor: PALETTE.paper }}>
+      <form onSubmit={submit} className="w-full max-w-xs flex flex-col gap-3 text-center">
+        <Lock size={28} className="mx-auto" style={{ color: PALETTE.gold }} />
+        <h1 className="sayeon-serif text-lg font-bold" style={{ color: PALETTE.text }}>선생님 화면</h1>
+        <input
+          type="password"
+          value={pw}
+          onChange={(e) => setPw(e.target.value)}
+          placeholder="비밀번호"
+          autoFocus
+          className="w-full px-4 py-3 rounded-md text-sm border"
+          style={{ borderColor: PALETTE.paperDeep, backgroundColor: "white", color: PALETTE.text }}
+        />
+        {err && <p className="text-sm font-bold" style={{ color: PALETTE.signal }}>{err}</p>}
+        <button
+          type="submit"
+          disabled={!pw || busy}
+          className="px-4 py-3 rounded-md text-sm font-bold"
+          style={{ backgroundColor: PALETTE.ink, color: PALETTE.paper, opacity: pw && !busy ? 1 : 0.35 }}
+        >
+          {busy ? "확인 중..." : "들어가기"}
+        </button>
+      </form>
+    </div>
+  );
+}
+
+function Dashboard() {
   const [submissions, setSubmissions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [activityFilter, setActivityFilter] = useState("all");
   const [selected, setSelected] = useState(null);
-  const [tab, setTab] = useState("records");
+  const [tab, setTab] = useState("flow");
 
   async function load() {
     setLoading(true);
@@ -55,16 +125,30 @@ export default function TeacherDashboard() {
           <span className="sayeon-serif text-sm font-bold" style={{ color: PALETTE.paper }}>
             교사 취합 화면
           </span>
-          <button onClick={load} className="flex items-center gap-1.5 text-xs font-bold" style={{ color: PALETTE.goldSoft }}>
-            <RefreshCcw size={13} /> 새로고침
-          </button>
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => downloadCsv(filtered, `글쓰기기록_${new Date().toISOString().slice(0, 10)}.csv`)}
+              disabled={filtered.length === 0}
+              className="flex items-center gap-1.5 text-xs font-bold"
+              style={{ color: PALETTE.goldSoft, opacity: filtered.length ? 1 : 0.4 }}
+            >
+              <Download size={13} /> 엑셀(CSV) 내려받기
+            </button>
+            <button onClick={load} className="flex items-center gap-1.5 text-xs font-bold" style={{ color: PALETTE.goldSoft }}>
+              <RefreshCcw size={13} /> 새로고침
+            </button>
+          </div>
         </div>
       </div>
 
       <div className="w-full flex justify-center no-print" style={{ backgroundColor: PALETTE.paperDeep }}>
-        <div className="w-full max-w-4xl flex gap-1 px-5 pt-2">
+        <div className="w-full max-w-4xl flex flex-wrap gap-1 px-5 pt-2">
           {[
-            ["records", "학생 제출 기록"],
+            ["flow", "학생별 흐름"],
+            ["diff", "글 변화 비교"],
+            ["track", "피드백 반영 추적"],
+            ["summary", "학급 전체 요약"],
+            ["records", "제출 목록"],
             ["corners", "코너 관리"],
           ].map(([id, label]) => (
             <button
@@ -83,6 +167,39 @@ export default function TeacherDashboard() {
       </div>
 
       {tab === "corners" && <CornerManager />}
+
+      {["flow", "diff", "track", "summary"].includes(tab) && (
+        <div className="w-full max-w-4xl mx-auto px-5 py-8">
+          {loadError && <p className="text-sm mb-4" style={{ color: PALETTE.signal }}>{loadError}</p>}
+          <div className="flex items-center gap-2 mb-4 no-print">
+            <span className="text-xs font-bold" style={{ color: PALETTE.textMuted }}>코너 필터</span>
+            <select
+              value={activityFilter}
+              onChange={(e) => setActivityFilter(e.target.value)}
+              className="text-sm px-3 py-1.5 rounded-md border"
+              style={{ borderColor: PALETTE.paperDeep, color: PALETTE.text }}
+            >
+              {activityOptions.map((opt) => (
+                <option key={opt} value={opt}>{opt === "all" ? "전체" : opt}</option>
+              ))}
+            </select>
+          </div>
+          {loading ? (
+            <p className="text-sm" style={{ color: PALETTE.textMuted }}>불러오는 중...</p>
+          ) : tab === "flow" ? (
+            <FlowView submissions={filtered} />
+          ) : tab === "diff" ? (
+            <DiffView submissions={filtered} />
+          ) : tab === "track" ? (
+            <TrackView
+              submissions={filtered}
+              onSaved={(id, marks) => setSubmissions((prev) => prev.map((x) => (x.id === id ? { ...x, teacherMarks: marks } : x)))}
+            />
+          ) : (
+            <SummaryView submissions={filtered} />
+          )}
+        </div>
+      )}
 
       <div className="w-full max-w-4xl mx-auto px-5 py-8" style={{ display: tab === "records" ? "block" : "none" }}>
         {loadError && (
@@ -124,7 +241,7 @@ export default function TeacherDashboard() {
               <tbody>
                 {filtered.map((s) => (
                   <tr key={s.id} className="border-t" style={{ borderColor: PALETTE.paperDeep, backgroundColor: "white" }}>
-                    <td className="px-4 py-2.5" style={{ color: PALETTE.text }}>{s.studentName}</td>
+                    <td className="px-4 py-2.5" style={{ color: PALETTE.text }}>{studentLabel(s)}</td>
                     <td className="px-4 py-2.5" style={{ color: PALETTE.text }}>
                       {s.activityId === "question" && <span className="mr-1">❓</span>}
                       {s.activityLabel}
@@ -168,7 +285,7 @@ export default function TeacherDashboard() {
             <div className="flex items-start justify-between mb-4 no-print">
               <div>
                 <h2 className="sayeon-serif text-lg font-bold" style={{ color: PALETTE.text }}>
-                  {selected.studentName} · {selected.activityLabel}
+                  {studentLabel(selected)} · {selected.activityLabel}
                 </h2>
                 <p className="text-xs" style={{ color: PALETTE.textMuted }}>
                   총 {(selected.versions || []).length}회 제출 · {selected.status === "completed" ? "완성" : "진행중"}
