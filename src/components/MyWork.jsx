@@ -1,5 +1,5 @@
 // 학생이 번호+이름으로 들어왔을 때 보는 "내 글 보관함"과 "내 글이 달라진 과정" 화면입니다.
-import { ArrowRight, ChevronLeft, PenLine, History } from "lucide-react";
+import { ArrowRight, PenLine, History } from "lucide-react";
 import { PALETTE, CATEGORY_STYLE } from "../palette.js";
 import { countChars, diffWords } from "../lib/analyze.js";
 
@@ -120,9 +120,6 @@ export function MyHistory({ submission, onBack, onContinue }) {
 
   return (
     <div className="pt-2">
-      <button onClick={onBack} className="flex items-center gap-1 text-xs font-bold mb-3" style={{ color: PALETTE.textMuted }}>
-        <ChevronLeft size={14} /> 글 보관함으로
-      </button>
       <h2 className="sayeon-serif text-xl font-bold mb-1" style={{ color: PALETTE.text }}>
         내 글이 달라진 과정
       </h2>

@@ -310,6 +310,69 @@ export default function StudentFlow() {
     setStep("final");
   }
 
+  // 지금 쓰던 글의 화면 상태만 비웁니다(이름·번호는 그대로). 서버에 저장된 글은 지워지지 않아요.
+  function resetWork() {
+    setHistorySub(null);
+    setDraftNotice("");
+    setActivity(null);
+    setText("");
+    setOcrDraft("");
+    setPhotoPreviews([]);
+    setFeedback(null);
+    setError("");
+    setRevisionRound(0);
+    setSelfLevel(null);
+    setFocus(["all"]);
+    setDepth("hint");
+    setNote("");
+    setTopic("");
+    setPlanWill([]);
+    setPlanNote("");
+    setRefChanged("");
+    setRefNext("");
+    setSubmissionId(null);
+    setVersions([]);
+    setResumed(false);
+  }
+
+  function goToMyWork() {
+    resetWork();
+    openMyWork();
+  }
+
+  function goToCorners() {
+    resetWork();
+    setStep("activity");
+  }
+
+  // 화면마다 "뒤로" 버튼이 어디로 갈지 정합니다. (불러오는 중인 화면에서는 버튼을 숨겨요.)
+  function backTarget() {
+    switch (step) {
+      case "activity":
+        return { label: "보관함", aria: "내 글 보관함으로", go: goToMyWork };
+      case "method":
+        return { label: "코너 고르기", aria: "코너 다시 고르기", go: goToCorners };
+      case "confirming":
+        return { label: "다시 찍기", aria: "사진 다시 찍기", go: () => setStep("method") };
+      case "compose":
+        return revisionRound > 0
+          ? { label: "편집자 의견", aria: "편집자 의견 다시 보기", go: () => setStep("feedback") }
+          : { label: "쓰는 방법", aria: "쓰는 방법 다시 고르기", go: () => setStep("method") };
+      case "setup":
+        return { label: `${unit} 다시 보기`, aria: `${unit} 다시 보기`, go: () => setStep("compose") };
+      case "feedback":
+        return { label: "보관함", aria: "내 글 보관함으로", go: goToMyWork };
+      case "reflect":
+        return { label: "편집자 의견", aria: "편집자 의견 다시 보기", go: () => setStep("feedback") };
+      case "history":
+        return { label: "보관함", aria: "내 글 보관함으로", go: () => setStep("myWork") };
+      case "final":
+        return { label: "보관함", aria: "내 글 보관함으로", go: goToMyWork };
+      default:
+        return null;
+    }
+  }
+
   function startOver() {
     setStep("start");
     setStudentName("");
@@ -361,7 +424,43 @@ export default function StudentFlow() {
       </div>
 
       <div className="w-full max-w-2xl px-5 py-10 flex-1">
-        {step !== "start" && step !== "activity" && step !== "final" && <StageTracker stage={stageIndex} />}
+        {step !== "start" && !String(step).startsWith("loading") && step !== "checkingResume" && (
+          <nav className="flex items-center justify-between gap-2 mb-5" aria-label="화면 이동">
+            {backTarget() ? (
+              <button
+                onClick={backTarget().go}
+                aria-label={backTarget().aria}
+                className="flex items-center gap-1 px-3 py-2 rounded-md text-xs font-bold border whitespace-nowrap"
+                style={{ borderColor: PALETTE.paperDeep, backgroundColor: "white", color: PALETTE.text }}
+              >
+                <ChevronLeft size={14} /> {backTarget().label}
+              </button>
+            ) : (
+              <span />
+            )}
+            <div className="flex items-center gap-2">
+              {!["myWork", "activity", "feedback", "final", "history"].includes(step) && (
+                <button
+                  onClick={goToMyWork}
+                  aria-label="📂 내 글 보관함"
+                  className="px-3 py-2 rounded-md text-xs font-bold border whitespace-nowrap"
+                  style={{ borderColor: PALETTE.paperDeep, backgroundColor: "white", color: PALETTE.text }}
+                >
+                  📂 보관함
+                </button>
+              )}
+              <button
+                onClick={startOver}
+                className="flex items-center gap-1 px-2 py-2 rounded-md text-xs font-bold whitespace-nowrap"
+                style={{ color: PALETTE.textMuted }}
+              >
+                <RotateCcw size={13} /> 처음으로
+              </button>
+            </div>
+          </nav>
+        )}
+
+        {step !== "start" && step !== "activity" && step !== "final" && step !== "myWork" && step !== "history" && <StageTracker stage={stageIndex} />}
 
         {error && (
           <div className="mb-6 flex items-start gap-2 px-4 py-3 rounded-md text-sm" style={{ backgroundColor: "#F3E3E1", color: PALETTE.signal }}>
@@ -487,9 +586,6 @@ export default function StudentFlow() {
 
         {step === "method" && activity && (
           <div className="pt-4">
-            <button onClick={() => setStep("activity")} className="flex items-center gap-1 text-xs font-bold mb-4" style={{ color: PALETTE.textMuted }}>
-              <ChevronLeft size={14} /> 코너 다시 고르기
-            </button>
             <h2 className="sayeon-serif text-xl font-bold mb-1" style={{ color: PALETTE.text }}>{activity.label}</h2>
             <p className="text-sm mb-8" style={{ color: PALETTE.textMuted }}>{activity.writingPrompt}</p>
             <div className="grid grid-cols-2 gap-4">
