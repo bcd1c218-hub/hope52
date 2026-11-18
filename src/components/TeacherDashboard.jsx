@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { RefreshCcw, Printer, X, ChevronRight, Trash2, Download, Lock } from "lucide-react";
 import { FlowView, DiffView, TrackView, SummaryView } from "./TeacherViews.jsx";
+import BookEditor from "./BookEditor.jsx";
 import { downloadCsv, studentLabel } from "../lib/analyze.js";
 import { checkTeacherPassword } from "../api.js";
 import { PALETTE } from "../palette.js";
@@ -149,6 +150,7 @@ function Dashboard() {
             ["track", "피드백 반영 추적"],
             ["summary", "학급 전체 요약"],
             ["records", "제출 목록"],
+            ["book", "📚 책 만들기"],
             ["corners", "코너 관리"],
           ].map(([id, label]) => (
             <button
@@ -167,6 +169,17 @@ function Dashboard() {
       </div>
 
       {tab === "corners" && <CornerManager />}
+
+      {tab === "book" && (
+        <div className="w-full max-w-4xl mx-auto px-5 py-8">
+          {/* 다시 불러오는 동안에도 화면을 유지해야 보던 탭이 처음으로 돌아가지 않아요. */}
+          {loading && submissions.length === 0 ? (
+            <p className="text-sm" style={{ color: PALETTE.textMuted }}>불러오는 중...</p>
+          ) : (
+            <BookEditor submissions={submissions} onReload={load} />
+          )}
+        </div>
+      )}
 
       {["flow", "diff", "track", "summary"].includes(tab) && (
         <div className="w-full max-w-4xl mx-auto px-5 py-8">

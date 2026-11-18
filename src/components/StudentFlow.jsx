@@ -20,7 +20,8 @@ import { requestOcr, requestFeedback, fileToBase64 } from "../api.js";
 import { fetchCustomActivities } from "../services/customActivities.js";
 import { CLASS_SIZE, classLabel } from "../data/classInfo.js";
 import { createSubmission, addRevision, markCompleted, findActiveSubmission, updateLastVersion, fetchMySubmissions, saveDraft } from "../services/submissions.js";
-import { MyWorkList, MyHistory } from "./MyWork.jsx";
+import { MyWorkList, MyHistory, CopyButton } from "./MyWork.jsx";
+import BookSubmit, { BookStatusBox } from "./BookSubmit.jsx";
 
 export default function StudentFlow() {
   const [step, setStep] = useState("start");
@@ -51,6 +52,9 @@ export default function StudentFlow() {
   const [mySubs, setMySubs] = useState([]);
   const [historySub, setHistorySub] = useState(null);
   const [draftNotice, setDraftNotice] = useState("");
+  const [loadedBook, setLoadedBook] = useState(null); // 불러온 글의 '우리 반 책' 정보
+  const [bookTarget, setBookTarget] = useState(null); // 책에 내기 화면에서 다루는 글
+  const [bookReturn, setBookReturn] = useState("final");
 
   useEffect(() => {
     fetchCustomActivities()
@@ -124,6 +128,7 @@ export default function StudentFlow() {
     const last = existing.versions[existing.versions.length - 1];
     setSubmissionId(existing.id);
     setVersions(existing.versions);
+    setLoadedBook(existing.book || null);
     const draft = existing.draftText && existing.draftText !== last.text ? existing.draftText : "";
     setText(draft || last.text || "");
     setDraftNotice(draft ? "지난번에 고쳐 쓰던 글을 불러왔어요." : "");
@@ -300,19 +305,25 @@ export default function StudentFlow() {
   async function finishUp() {
     const changedLabel = versions.length > 1 ? `처음 ${unit}보다 달라진 곳` : `이 ${unit}에서 가장 마음에 드는 곳`;
     const reflection = { changedLabel, changed: refChanged.trim(), next: refNext.trim() };
+    // 완성본은 "마지막으로 편집자에게 보낸 글"입니다. 고쳐 쓰다 보내지 않은 글은 완성본이 되지 않아요.
+    const finalText = versions.length ? versions[versions.length - 1].text : text;
     if (submissionId) {
       try {
-        await markCompleted({ submissionId, finalText: text, reflection });
+        await markCompleted({ submissionId, finalText, reflection });
       } catch (e) {
         // 완료 표시에 실패해도 학생 화면은 정상적으로 넘어갑니다.
       }
     }
+    setText(finalText);
+    setDraftNotice("");
     setStep("final");
   }
 
   // 지금 쓰던 글의 화면 상태만 비웁니다(이름·번호는 그대로). 서버에 저장된 글은 지워지지 않아요.
   function resetWork() {
     setHistorySub(null);
+    setLoadedBook(null);
+    setBookTarget(null);
     setDraftNotice("");
     setActivity(null);
     setText("");
@@ -333,6 +344,20 @@ export default function StudentFlow() {
     setSubmissionId(null);
     setVersions([]);
     setResumed(false);
+  }
+
+  function openBookForm(sub, ret) {
+    setBookTarget(sub);
+    setBookReturn(ret);
+    setStep("bookForm");
+  }
+
+  function onBookDone(updated) {
+    setMySubs((list) => list.map((x) => (x.id === updated.id ? updated : x)));
+    if (historySub && historySub.id === updated.id) setHistorySub(updated);
+    if (updated.id === submissionId) setLoadedBook(updated.book);
+    setBookTarget(updated);
+    setStep(bookReturn);
   }
 
   function goToMyWork() {
@@ -364,6 +389,8 @@ export default function StudentFlow() {
         return { label: "보관함", aria: "내 글 보관함으로", go: goToMyWork };
       case "reflect":
         return { label: "편집자 의견", aria: "편집자 의견 다시 보기", go: () => setStep("feedback") };
+      case "bookForm":
+        return { label: "돌아가기", aria: "책에 내기 그만두기", go: () => setStep(bookReturn) };
       case "history":
         return { label: "보관함", aria: "내 글 보관함으로", go: () => setStep("myWork") };
       case "final":
@@ -460,7 +487,7 @@ export default function StudentFlow() {
           </nav>
         )}
 
-        {step !== "start" && step !== "activity" && step !== "final" && step !== "myWork" && step !== "history" && <StageTracker stage={stageIndex} />}
+        {step !== "start" && step !== "activity" && step !== "final" && step !== "myWork" && step !== "history" && step !== "bookForm" && <StageTracker stage={stageIndex} />}
 
         {error && (
           <div className="mb-6 flex items-start gap-2 px-4 py-3 rounded-md text-sm" style={{ backgroundColor: "#F3E3E1", color: PALETTE.signal }}>
@@ -549,7 +576,16 @@ export default function StudentFlow() {
         )}
 
         {step === "history" && historySub && (
-          <MyHistory submission={historySub} onBack={() => setStep("myWork")} onContinue={continueSubmission} />
+          <MyHistory
+            submission={historySub}
+            onBack={() => setStep("myWork")}
+            onContinue={continueSubmission}
+            onBook={(sub) => openBookForm(sub, "history")}
+          />
+        )}
+
+        {step === "bookForm" && bookTarget && (
+          <BookSubmit submission={bookTarget} onDone={onBookDone} onCancel={() => setStep(bookReturn)} />
         )}
 
         {step === "activity" && (
@@ -992,6 +1028,24 @@ export default function StudentFlow() {
               </p>
               <p className="text-sm leading-8 whitespace-pre-wrap sayeon-serif" style={{ color: PALETTE.text }}>{text}</p>
             </div>
+            <CopyButton text={text} className="mt-6" />
+            {submissionId && (() => {
+              const finalSub = {
+                id: submissionId,
+                studentName,
+                studentNo,
+                activityLabel: activity.label,
+                versions,
+                currentText: text,
+                status: "completed",
+                book: loadedBook,
+              };
+              return (
+                <div className="w-full mt-6">
+                  <BookStatusBox submission={finalSub} onOpenForm={() => openBookForm(finalSub, "final")} />
+                </div>
+              );
+            })()}
             <button onClick={startOver} className="mt-8 flex items-center gap-2 text-sm font-bold" style={{ color: PALETTE.textMuted }}>
               <RotateCcw size={14} /> 새 글 쓰러 가기
             </button>

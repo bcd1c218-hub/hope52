@@ -72,7 +72,8 @@ export async function markCompleted({ submissionId, finalText, reflection }) {
 export async function fetchAllSubmissions() {
   const q = query(collection(db, SUBMISSIONS), orderBy("updatedAt", "desc"));
   const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  // "우리 반 책" 설정 문서는 학생 글이 아니므로 뺍니다.
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((x) => x.kind !== "bookSettings");
 }
 
 // 같은 이름 + 같은 코너로 "아직 끝내지 않은" 원고가 있으면 찾아서 이어서 쓸 수 있게 합니다.

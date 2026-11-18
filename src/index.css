@@ -25,3 +25,34 @@ input:focus {
     display: none !important;
   }
 }
+
+/* ── 우리 반 책 인쇄 (A4) ───────────────────── */
+@media print {
+  @page {
+    size: A4;
+    margin: 18mm 16mm;
+  }
+  body {
+    background: #ffffff !important;
+  }
+  .book-break {
+    break-before: page;
+    page-break-before: always;
+  }
+  .book-avoid-break {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}
+
+/* 책 인쇄 미리보기가 열려 있을 때는 그 내용만 인쇄합니다. */
+@media print {
+  body.printing-book #root {
+    display: none !important;
+  }
+  .book-print {
+    position: static !important;
+    overflow: visible !important;
+    inset: auto !important;
+  }
+}

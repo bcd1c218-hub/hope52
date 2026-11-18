@@ -1,7 +1,10 @@
 // 학생이 번호+이름으로 들어왔을 때 보는 "내 글 보관함"과 "내 글이 달라진 과정" 화면입니다.
-import { ArrowRight, PenLine, History } from "lucide-react";
+import { useState } from "react";
+import { ArrowRight, PenLine, History, Copy, Check } from "lucide-react";
 import { PALETTE, CATEGORY_STYLE } from "../palette.js";
 import { countChars, diffWords } from "../lib/analyze.js";
+import { BookStatusBox } from "./BookSubmit.jsx";
+import { BOOK_STATUS_LABEL } from "../services/book.js";
 
 function dateText(value) {
   if (!value) return "";
@@ -11,6 +14,62 @@ function dateText(value) {
 }
 
 const card = { backgroundColor: "white", border: `1px solid ${PALETTE.paperDeep}` };
+
+// 글을 복사해서 패들렛 같은 곳에 붙여 넣을 수 있게 하는 버튼입니다.
+async function copyText(text) {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch (e) {
+    // 아래 예전 방식으로 다시 시도해요.
+  }
+  try {
+    const area = document.createElement("textarea");
+    area.value = text;
+    area.setAttribute("readonly", "");
+    area.style.position = "fixed";
+    area.style.top = "-1000px";
+    document.body.appendChild(area);
+    area.select();
+    area.setSelectionRange(0, text.length);
+    const ok = document.execCommand("copy");
+    document.body.removeChild(area);
+    return ok;
+  } catch (e) {
+    return false;
+  }
+}
+
+export function CopyButton({ text, className = "" }) {
+  const [state, setState] = useState("idle"); // idle | done | fail
+  async function onClick() {
+    const ok = await copyText(text || "");
+    setState(ok ? "done" : "fail");
+    setTimeout(() => setState("idle"), 4000);
+  }
+  return (
+    <div className={`flex flex-col items-center gap-1.5 ${className}`}>
+      <button
+        onClick={onClick}
+        disabled={!text}
+        className="flex items-center gap-1.5 px-4 py-2.5 rounded-md text-sm font-bold border"
+        style={{ borderColor: PALETTE.ink, backgroundColor: "white", color: PALETTE.text }}
+      >
+        {state === "done" ? <Check size={15} /> : <Copy size={15} />}
+        {state === "done" ? "복사했어요!" : "글 복사하기"}
+      </button>
+      <p className="text-xs" role="status" style={{ color: state === "fail" ? PALETTE.signal : PALETTE.textMuted }}>
+        {state === "done"
+          ? "패들렛 같은 곳에 붙여 넣으세요. (길게 누르기 → 붙여넣기)"
+          : state === "fail"
+          ? "복사하지 못했어요. 글을 길게 눌러 직접 복사해 주세요."
+          : "친구들과 나누고 싶으면 복사해서 붙여 넣으세요."}
+      </p>
+    </div>
+  );
+}
 
 export function MyWorkList({ studentName, submissions, onNew, onContinue, onHistory }) {
   return (
@@ -22,6 +81,13 @@ export function MyWorkList({ studentName, submissions, onNew, onContinue, onHist
         쓰던 글은 이어서 고칠 수 있고, 내 글이 어떻게 달라졌는지도 볼 수 있어요.
       </p>
 
+      <a
+        href="/?book"
+        className="w-full flex items-center justify-center gap-2 px-5 py-2.5 rounded-md text-sm font-bold mb-2 border"
+        style={{ borderColor: PALETTE.paperDeep, backgroundColor: "white", color: PALETTE.text }}
+      >
+        📖 우리 반 책 읽기
+      </a>
       <button
         onClick={onNew}
         className="w-full flex items-center justify-center gap-2 px-5 py-3 rounded-md text-sm font-bold mb-5"
@@ -56,6 +122,15 @@ export function MyWorkList({ studentName, submissions, onNew, onContinue, onHist
                 {dateText(s.updatedAt)} · 피드백 {versions.length}번
                 {s.draftText && !done ? " · 고쳐 쓰던 글 있음" : ""}
               </p>
+              {s.book && s.book.status && (
+                <p
+                  className="text-xs font-bold mb-2"
+                  style={{ color: s.book.status === "needsFix" ? "#B4541A" : s.book.status === "approved" ? PALETTE.content : PALETTE.textMuted }}
+                >
+                  📚 {BOOK_STATUS_LABEL[s.book.status]}
+                  {s.book.status === "needsFix" && s.book.teacherNote ? ` — ${s.book.teacherNote}` : ""}
+                </p>
+              )}
               {preview && (
                 <p className="text-xs leading-relaxed mb-3" style={{ color: PALETTE.text }}>
                   {preview}
@@ -112,7 +187,7 @@ function Diff({ prev, next }) {
   );
 }
 
-export function MyHistory({ submission, onBack, onContinue }) {
+export function MyHistory({ submission, onBack, onContinue, onBook }) {
   const versions = Array.isArray(submission?.versions) ? submission.versions : [];
   const done = submission?.status === "completed";
   const first = versions[0];
@@ -193,6 +268,13 @@ export function MyHistory({ submission, onBack, onContinue }) {
           {submission.reflection.next && (
             <p className="text-sm" style={{ color: PALETTE.text }}>· 다음에 해 보고 싶은 것: {submission.reflection.next}</p>
           )}
+        </div>
+      )}
+
+      {done && <CopyButton text={submission.currentText || last?.text || ""} className="mt-5" />}
+      {done && onBook && (
+        <div className="mt-5">
+          <BookStatusBox submission={submission} onOpenForm={() => onBook(submission)} />
         </div>
       )}
 
