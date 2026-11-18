@@ -1,7 +1,7 @@
 import { PALETTE } from "../palette.js";
 
 export function StageTracker({ stage }) {
-  const stages = ["원고 쓰기", "편집자 의견", "방송 완성"];
+  const stages = ["원고 쓰기", "편집자 의견", "완성"];
   return (
     <div className="flex items-center justify-center gap-2 mb-8">
       {stages.map((label, i) => (
@@ -33,7 +33,9 @@ export function StageTracker({ stage }) {
   );
 }
 
+// AI가 글을 읽는 동안에만 보이는 표시입니다. (예전 '라디오 ON AIR' 표시를 바꿨어요.)
 export function OnAirBadge({ active }) {
+  if (!active) return null;
   return (
     <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full" style={{ backgroundColor: PALETTE.inkSoft }}>
       <span
@@ -43,8 +45,8 @@ export function OnAirBadge({ active }) {
           animation: active ? "pulse-dot 1.4s ease-in-out infinite" : "none",
         }}
       />
-      <span className="text-xs font-bold tracking-widest" style={{ color: PALETTE.goldSoft }}>
-        ON AIR
+      <span className="text-xs font-bold" style={{ color: PALETTE.goldSoft }}>
+        AI가 읽는 중
       </span>
     </div>
   );

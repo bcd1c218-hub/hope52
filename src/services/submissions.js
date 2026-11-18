@@ -55,7 +55,7 @@ export async function addRevision({ submissionId, versions, text, feedback }) {
   return nextVersions;
 }
 
-// 학생이 "방송 준비 완료"를 누르면 최종본으로 표시합니다.
+// 학생이 "완성하기"를 누르면 최종본으로 표시합니다.
 export async function markCompleted({ submissionId, finalText, reflection }) {
   const ref = doc(db, SUBMISSIONS, submissionId);
   await updateDoc(ref, {

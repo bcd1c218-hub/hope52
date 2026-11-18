@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import {
-  Radio,
+  PenLine,
   Mic,
   Type as TypeIcon,
   RotateCcw,
@@ -433,7 +433,7 @@ export default function StudentFlow() {
       <div className="w-full flex justify-center" style={{ backgroundColor: PALETTE.ink }}>
         <div className="w-full max-w-2xl flex items-center justify-between px-5 py-3.5">
           <div className="flex items-center gap-2">
-            <Radio size={18} style={{ color: PALETTE.goldSoft }} />
+            <PenLine size={18} style={{ color: PALETTE.goldSoft }} />
             <span className="sayeon-serif text-sm font-bold" style={{ color: PALETTE.paper }}>
               오늘의 원고 편집실
             </span>
@@ -962,7 +962,7 @@ export default function StudentFlow() {
                 고쳐 쓰러 가기
               </button>
               <button onClick={goReflect} className="px-5 py-2.5 rounded-md text-sm font-bold" style={{ backgroundColor: PALETTE.ink, color: PALETTE.paper }}>
-                방송 준비 완료
+                다 썼어요 · 마무리하기
               </button>
             </div>
           </div>
@@ -1014,7 +1014,7 @@ export default function StudentFlow() {
                 돌아가기
               </button>
               <button onClick={finishUp} className="px-5 py-2.5 rounded-md text-sm font-bold" style={{ backgroundColor: PALETTE.ink, color: PALETTE.paper }}>
-                방송 준비 완료
+                완성하기
               </button>
             </div>
           </div>
@@ -1022,14 +1022,13 @@ export default function StudentFlow() {
 
         {step === "final" && activity && (
           <div className="flex flex-col items-center pt-6">
-            <div className="mb-6"><OnAirBadge active={false} /></div>
+            <p className="text-3xl mb-4" aria-hidden="true">🎉</p>
             <div className="w-full rounded-lg p-7 border" style={{ ...GRID_BG, backgroundColor: "white", borderColor: PALETTE.paperDeep }}>
               <p className="text-xs font-bold mb-1" style={{ color: PALETTE.gold }}>
                 {studentName} 학생의 {activity.label} 완성작
               </p>
               <p className="text-sm leading-8 whitespace-pre-wrap sayeon-serif" style={{ color: PALETTE.text }}>{text}</p>
             </div>
-            <CopyButton text={text} className="mt-6" />
             {submissionId && (() => {
               const finalSub = {
                 id: submissionId,
@@ -1047,6 +1046,7 @@ export default function StudentFlow() {
                 </div>
               );
             })()}
+            <CopyButton text={text} className="mt-6" />
             <button onClick={startOver} className="mt-8 flex items-center gap-2 text-sm font-bold" style={{ color: PALETTE.textMuted }}>
               <RotateCcw size={14} /> 새 글 쓰러 가기
             </button>

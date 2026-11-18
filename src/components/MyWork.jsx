@@ -60,13 +60,11 @@ export function CopyButton({ text, className = "" }) {
         {state === "done" ? <Check size={15} /> : <Copy size={15} />}
         {state === "done" ? "복사했어요!" : "글 복사하기"}
       </button>
-      <p className="text-xs" role="status" style={{ color: state === "fail" ? PALETTE.signal : PALETTE.textMuted }}>
-        {state === "done"
-          ? "패들렛 같은 곳에 붙여 넣으세요. (길게 누르기 → 붙여넣기)"
-          : state === "fail"
-          ? "복사하지 못했어요. 글을 길게 눌러 직접 복사해 주세요."
-          : "친구들과 나누고 싶으면 복사해서 붙여 넣으세요."}
-      </p>
+      {state === "fail" && (
+        <p className="text-xs" role="status" style={{ color: PALETTE.signal }}>
+          복사하지 못했어요. 글을 길게 눌러 직접 복사해 주세요.
+        </p>
+      )}
     </div>
   );
 }
