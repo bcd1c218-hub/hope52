@@ -71,7 +71,7 @@ export function CopyButton({ text, className = "" }) {
   );
 }
 
-export function MyWorkList({ studentName, submissions, onNew, onContinue, onHistory }) {
+export function MyWorkList({ studentName, submissions, onNew, onContinue, onHistory, onBook }) {
   return (
     <div className="pt-4">
       <h2 className="sayeon-serif text-xl font-bold mb-1" style={{ color: PALETTE.text }}>
@@ -145,6 +145,15 @@ export function MyWorkList({ studentName, submissions, onNew, onContinue, onHist
                     style={{ backgroundColor: PALETTE.ink, color: PALETTE.paper }}
                   >
                     이어서 고쳐 쓰기 <ArrowRight size={13} />
+                  </button>
+                )}
+                {done && onBook && (!s.book || s.book.status !== "approved") && (
+                  <button
+                    onClick={() => onBook(s)}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-md text-xs font-bold"
+                    style={{ backgroundColor: PALETTE.ink, color: PALETTE.paper }}
+                  >
+                    📚 {s.book && s.book.status === "needsFix" ? "고쳐서 다시 내기" : s.book && s.book.status === "submitted" ? "낸 내용 고치기" : "우리 반 책에 내기"}
                   </button>
                 )}
                 <button

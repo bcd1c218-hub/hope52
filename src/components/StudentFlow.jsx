@@ -572,6 +572,7 @@ export default function StudentFlow() {
               setHistorySub(sub);
               setStep("history");
             }}
+            onBook={(sub) => openBookForm(sub, "myWork")}
           />
         )}
 
