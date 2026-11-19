@@ -2,7 +2,7 @@
 //  ① 점검하기: 학생이 낸 글을 확인하고, 필요하면 직접 고치거나 학생에게 고쳐 달라고 해요.
 //  ② 책 순서: 확인한 글의 순서와 장을 정하고, 댓글을 관리해요.
 //  ③ 책 정보·인쇄: 제목·부제·장 이름을 정하고 A4로 인쇄해요.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ArrowUp, ArrowDown, Check, Pencil, Printer, Plus, Trash2, X, Save, MinusCircle, PlusCircle } from "lucide-react";
 import { PALETTE } from "../palette.js";
@@ -23,7 +23,7 @@ import {
   REACTIONS,
   BOOK_STATUS_LABEL,
 } from "../services/book.js";
-import { EntryBody, Stars } from "./BookReader.jsx";
+import { EntryBody, Stars, PRINT_FIT_MAX } from "./BookReader.jsx";
 
 const card = { backgroundColor: "white", border: `1px solid ${PALETTE.paperDeep}` };
 const inputStyle = { borderColor: PALETTE.paperDeep, backgroundColor: "white", color: PALETTE.text };
@@ -229,10 +229,59 @@ function BookPrint({ settings, entries, onClose }) {
   const sectionTitle = (id) => sections.find((x) => x.id === id)?.title || "";
   const today = new Date().toLocaleDateString("ko-KR", { year: "numeric", month: "long" });
 
+  // ── 한 쪽에 맞추기 ──
+  // A4(297mm)에서 위아래 여백(18mm×2)을 뺀 높이보다 글이 길면, 글자를 한 단계씩 줄여 다시 재요.
+  // 가장 작게 해도 넘치는 아주 긴 글만 다음 쪽으로 이어져요.
+  const PAGE_PX = ((297 - 36) * 96) / 25.4 - 24; // 여유 24px
+  const [fits, setFits] = useState({}); // 글 id → 단계
+  const [tocFit, setTocFit] = useState(0);
+  const [fontsReady, setFontsReady] = useState(false);
+  const [stillLong, setStillLong] = useState([]);
+  const refs = useRef({});
+  const tocRef = useRef(null);
+  useEffect(() => {
+    let alive = true;
+    (document.fonts?.ready || Promise.resolve()).then(() => alive && setFontsReady(true));
+    return () => {
+      alive = false;
+    };
+  }, []);
+  useLayoutEffect(() => {
+    if (!fontsReady) return;
+    let changed = false;
+    const next = { ...fits };
+    entries.forEach((e) => {
+      const el = refs.current[e.id];
+      const lv = next[e.id] || 0;
+      if (el && el.offsetHeight > PAGE_PX && lv < PRINT_FIT_MAX) {
+        next[e.id] = lv + 1;
+        changed = true;
+      }
+    });
+    if (changed) {
+      setFits(next);
+    } else {
+      const long = entries.filter((e) => refs.current[e.id] && refs.current[e.id].offsetHeight > PAGE_PX).map((e) => e.studentName);
+      if (long.join() !== stillLong.join()) setStillLong(long);
+    }
+    if (tocRef.current && tocRef.current.offsetHeight > PAGE_PX && tocFit < 3) setTocFit(tocFit + 1);
+  }, [fontsReady, fits, tocFit, entries]);
+  const shrunk = entries.filter((e) => (fits[e.id] || 0) > 0).length;
+  const TOC = [
+    { size: 16, gap: 8, sec: 16 },
+    { size: 15, gap: 4, sec: 10 },
+    { size: 14, gap: 2, sec: 8 },
+    { size: 13, gap: 0, sec: 6 },
+  ][tocFit];
+
   return createPortal(
     <div className="book-print fixed inset-0 z-50 overflow-auto" style={{ backgroundColor: "#ffffff" }}>
       <div className="no-print sticky top-0 flex items-center justify-between gap-2 px-5 py-3" style={{ backgroundColor: PALETTE.ink }}>
-        <span className="text-sm font-bold" style={{ color: PALETTE.paper }}>인쇄 미리보기 · A4 · 글 {entries.length}편</span>
+        <span className="text-sm font-bold" style={{ color: PALETTE.paper }}>
+          인쇄 미리보기 · A4 · 글 {entries.length}편
+          {shrunk > 0 && <span className="font-normal"> · 긴 글 {shrunk}편은 한 쪽에 맞게 글자를 줄였어요</span>}
+          {stillLong.length > 0 && <span className="font-normal"> · {stillLong.join(", ")}의 글은 너무 길어 2쪽이 돼요</span>}
+        </span>
         <div className="flex gap-2">
           <button onClick={() => window.print()} className="flex items-center gap-1 px-3 py-1.5 rounded-md text-sm font-bold" style={{ backgroundColor: PALETTE.goldSoft, color: PALETTE.ink }}>
             <Printer size={14} /> 인쇄하기
@@ -243,7 +292,8 @@ function BookPrint({ settings, entries, onClose }) {
         </div>
       </div>
 
-      <div className="mx-auto" style={{ maxWidth: "180mm", padding: "10mm 0" }}>
+      {/* 인쇄되는 폭(210mm - 좌우 여백 16mm×2 = 178mm)과 똑같이 맞춰야 길이를 정확히 잴 수 있어요. */}
+      <div className="mx-auto" style={{ width: "178mm", padding: "10mm 0" }}>
         {/* 표지 */}
         <section className="flex flex-col items-center justify-center text-center" style={{ minHeight: "240mm" }}>
           <p className="text-sm mb-6" style={{ color: PALETTE.textMuted }}>{classLabel()}</p>
@@ -253,16 +303,16 @@ function BookPrint({ settings, entries, onClose }) {
         </section>
 
         {/* 차례 */}
-        <section className="book-break pt-4">
-          <h2 className="sayeon-serif text-2xl font-bold mb-6" style={{ color: PALETTE.text }}>차례</h2>
-          <ol className="flex flex-col gap-2">
+        <section ref={tocRef} className="book-break pt-4">
+          <h2 className={`sayeon-serif text-2xl font-bold ${tocFit ? "mb-3" : "mb-6"}`} style={{ color: PALETTE.text }}>차례</h2>
+          <ol className="flex flex-col" style={{ gap: TOC.gap }}>
             {entries.map((e, i) => {
               const sec = sectionTitle(e.book.sectionId);
               const prevSec = i > 0 ? sectionTitle(entries[i - 1].book.sectionId) : null;
               return (
                 <li key={e.id}>
-                  {sec && sec !== prevSec && <p className="font-bold mt-4 mb-1" style={{ color: PALETTE.gold }}>{sec}</p>}
-                  <p className="flex gap-3 text-base" style={{ color: PALETTE.text }}>
+                  {sec && sec !== prevSec && <p className="font-bold mb-1" style={{ color: PALETTE.gold, marginTop: TOC.sec, fontSize: TOC.size }}>{sec}</p>}
+                  <p className="flex gap-3" style={{ color: PALETTE.text, fontSize: TOC.size, lineHeight: 1.5 }}>
                     <span style={{ width: 28, color: PALETTE.textMuted }}>{i + 1}</span>
                     <span className="flex-1">{entryTitleOf(e)}</span>
                     <span>{e.studentName}</span>
@@ -275,8 +325,8 @@ function BookPrint({ settings, entries, onClose }) {
 
         {/* 글 */}
         {entries.map((e) => (
-          <section key={e.id} className="book-break pt-4">
-            <EntryBody entry={e} sectionTitle={sectionTitle(e.book.sectionId)} print />
+          <section key={e.id} ref={(el) => (refs.current[e.id] = el)} className="book-break pt-4">
+            <EntryBody entry={e} sectionTitle={sectionTitle(e.book.sectionId)} print fit={fits[e.id] || 0} />
           </section>
         ))}
       </div>

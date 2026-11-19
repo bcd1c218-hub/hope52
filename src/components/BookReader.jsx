@@ -17,8 +17,19 @@ export function Stars({ value, size = 14 }) {
 }
 
 // 글 한 편의 본문(표지 사진·책 정보·한 줄 추천·글)입니다. 읽기 화면과 인쇄에서 함께 써요.
-export function EntryBody({ entry, sectionTitle, print = false }) {
+// 인쇄할 때 글이 한 쪽을 넘으면 단계(fit 0~4)를 올려 글자와 줄 간격을 조금씩 줄여요.
+const PRINT_FIT = [
+  { font: 16, line: 36, title: 24, cover: [110, 150] },
+  { font: 15, line: 30, title: 22, cover: [96, 130] },
+  { font: 14, line: 26, title: 20, cover: [84, 114] },
+  { font: 13, line: 23, title: 18, cover: [72, 98] },
+  { font: 12, line: 20, title: 17, cover: [64, 87] },
+];
+export const PRINT_FIT_MAX = PRINT_FIT.length - 1;
+
+export function EntryBody({ entry, sectionTitle, print = false, fit = 0 }) {
   const b = entry.book || {};
+  const f = PRINT_FIT[Math.min(fit, PRINT_FIT_MAX)];
   return (
     <article>
       {sectionTitle && (
@@ -26,7 +37,7 @@ export function EntryBody({ entry, sectionTitle, print = false }) {
       )}
       <div className="flex gap-4 items-start mb-3">
         <div className="flex-1 min-w-0">
-          <h3 className={`sayeon-serif font-bold leading-snug ${print ? "text-2xl" : "text-lg"}`} style={{ color: PALETTE.text }}>
+          <h3 className={`sayeon-serif font-bold leading-snug ${print ? "" : "text-lg"}`} style={{ color: PALETTE.text, ...(print ? { fontSize: f.title } : {}) }}>
             {entryTitleOf(entry)}
           </h3>
           <p className="text-sm mt-1" style={{ color: PALETTE.textMuted }}>
@@ -45,7 +56,7 @@ export function EntryBody({ entry, sectionTitle, print = false }) {
             src={b.cover}
             alt={b.bookTitle ? `${b.bookTitle} 표지` : "책 표지"}
             className="shrink-0 rounded-md object-cover"
-            style={{ width: print ? 110 : 84, height: print ? 150 : 114, border: `1px solid ${PALETTE.paperDeep}` }}
+            style={{ width: print ? f.cover[0] : 84, height: print ? f.cover[1] : 114, border: `1px solid ${PALETTE.paperDeep}` }}
           />
         )}
       </div>
@@ -54,7 +65,10 @@ export function EntryBody({ entry, sectionTitle, print = false }) {
           “{b.oneLine}”
         </p>
       )}
-      <p className={`whitespace-pre-wrap sayeon-serif ${print ? "text-base leading-9" : "text-sm leading-8"}`} style={{ color: PALETTE.text }}>
+      <p
+        className={`whitespace-pre-wrap sayeon-serif ${print ? "" : "text-sm leading-8"}`}
+        style={{ color: PALETTE.text, ...(print ? { fontSize: f.font, lineHeight: `${f.line}px` } : {}) }}
+      >
         {displayTextOf(entry)}
       </p>
     </article>
