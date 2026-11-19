@@ -16,6 +16,8 @@ import {
   saveBookPlacements,
   removeComment,
   arrangeBook,
+  editBookEntry,
+  planChaptersByBook,
   bookTextOf,
   entryTitleOf,
   REACTIONS,
@@ -125,6 +127,97 @@ function ReviewCard({ sub, nextOrder, onDone }) {
   );
 }
 
+/* ── 책에 실린 글 고치기 (선생님이 직접) ─────────────── */
+function EntryEditor({ entry, onSaved, onCancel }) {
+  const b = entry.book || {};
+  const [f, setF] = useState({
+    title: b.title || "",
+    bookTitle: b.bookTitle || "",
+    bookAuthor: b.bookAuthor || "",
+    oneLine: b.oneLine || "",
+    text: bookTextOf(entry),
+  });
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));
+
+  async function save() {
+    setBusy(true);
+    setMsg("");
+    try {
+      await editBookEntry({ submissionId: entry.id, patch: f });
+      onSaved("고친 내용을 저장했어요.");
+    } catch (e) {
+      setMsg("저장하지 못했어요. 인터넷 연결을 확인해 주세요.");
+      setBusy(false);
+    }
+  }
+  async function sendBack() {
+    if (!note.trim()) {
+      setMsg("학생에게 보여 줄 메모를 한 줄 써 주세요.");
+      return;
+    }
+    if (!window.confirm("이 글을 책에서 잠시 빼고 학생에게 고쳐 달라고 할까요? 학생이 다시 내면 '① 점검하기'에 올라와요.")) return;
+    setBusy(true);
+    setMsg("");
+    try {
+      await askFix({ submissionId: entry.id, note });
+      onSaved("학생에게 고쳐 달라고 보냈어요.");
+    } catch (e) {
+      setMsg("저장하지 못했어요. 인터넷 연결을 확인해 주세요.");
+      setBusy(false);
+    }
+  }
+
+  const lab = "block text-xs font-bold mb-1";
+  const inp = "w-full px-3 py-1.5 rounded-md text-sm border mb-2";
+  return (
+    <div className="mt-3 pt-3 border-t" style={{ borderColor: PALETTE.paperDeep }}>
+      <label className={lab} style={{ color: PALETTE.textMuted }}>글 제목 (비우면 『책 제목』을 읽고)</label>
+      <input value={f.title} onChange={set("title")} className={inp} style={inputStyle} aria-label="글 제목" />
+      <div className="flex gap-2">
+        <div className="flex-1 min-w-0">
+          <label className={lab} style={{ color: PALETTE.textMuted }}>읽은 책</label>
+          <input value={f.bookTitle} onChange={set("bookTitle")} className={inp} style={inputStyle} aria-label="읽은 책" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <label className={lab} style={{ color: PALETTE.textMuted }}>지은이</label>
+          <input value={f.bookAuthor} onChange={set("bookAuthor")} className={inp} style={inputStyle} aria-label="지은이" />
+        </div>
+      </div>
+      <label className={lab} style={{ color: PALETTE.textMuted }}>한 줄 추천</label>
+      <input value={f.oneLine} onChange={set("oneLine")} className={inp} style={inputStyle} aria-label="한 줄 추천" />
+      <label className={lab} style={{ color: PALETTE.textMuted }}>책에 실을 글</label>
+      <textarea value={f.text} onChange={set("text")} rows={10} className="w-full p-3 rounded-md text-sm leading-7 border sayeon-serif mb-2" style={inputStyle} aria-label="책에 실을 글" />
+      {msg && <p className="text-xs font-bold mb-2" style={{ color: PALETTE.signal }}>{msg}</p>}
+      <div className="flex flex-wrap gap-2 justify-end mb-3">
+        <button onClick={onCancel} disabled={busy} className="px-3 py-2 rounded-md text-sm font-bold border" style={inputStyle}>
+          취소
+        </button>
+        <button onClick={save} disabled={busy} className="flex items-center gap-1 px-3 py-2 rounded-md text-sm font-bold" style={{ backgroundColor: PALETTE.content, color: "white" }}>
+          <Save size={14} /> 고친 내용 저장
+        </button>
+      </div>
+      <details className="text-xs" style={{ color: PALETTE.textMuted }}>
+        <summary className="cursor-pointer font-bold">학생에게 다시 고쳐 달라고 하기</summary>
+        <div className="flex gap-2 mt-2">
+          <input
+            value={note}
+            onChange={(e) => setNote(e.target.value.slice(0, 300))}
+            placeholder="예: 마지막 문장을 끝까지 써 주세요"
+            className="flex-1 px-3 py-1.5 rounded-md text-sm border"
+            style={inputStyle}
+          />
+          <button onClick={sendBack} disabled={busy} className="flex items-center gap-1 px-3 py-1.5 rounded-md text-sm font-bold border" style={{ borderColor: "#B4541A", color: "#B4541A", backgroundColor: "white" }}>
+            <Pencil size={14} /> 보내기
+          </button>
+        </div>
+      </details>
+    </div>
+  );
+}
+
 /* ── 인쇄 미리보기 (A4) ─────────────────────── */
 
 function BookPrint({ settings, entries, onClose }) {
@@ -206,6 +299,7 @@ export default function BookEditor({ submissions, onReload }) {
   const [preview, setPreview] = useState(false);
   const [openComments, setOpenComments] = useState(null);
   const [comments, setComments] = useState({});
+  const [editing, setEditing] = useState(null);
 
   useEffect(() => {
     fetchBookSettings()
@@ -299,6 +393,32 @@ export default function BookEditor({ submissions, onReload }) {
     }
   }
 
+  // 읽은 책 제목이 같은 글끼리 장으로 묶어요. (2편 이상인 책만 장이 되고, 나머지는 '여러 책 이야기'로)
+  async function autoChapters() {
+    if (arranged.length === 0) return;
+    if (sections.length > 0 && !window.confirm("지금 있는 장을 지우고 책 제목별로 새로 나눌까요? (글은 그대로예요)")) return;
+    const plan = planChaptersByBook(arranged);
+    setSaving(true);
+    setMsg("");
+    try {
+      const next = { ...settings, sections: plan.sections };
+      const id = await saveBookSettings(next);
+      setSettings({ ...next, id });
+      setSettingsDirty(false);
+      await saveBookPlacements(plan.placements);
+      const nextPl = {};
+      plan.placements.forEach((x) => (nextPl[x.id] = { included: true, order: x.order, sectionId: x.sectionId }));
+      setPlacements((p) => ({ ...p, ...nextPl }));
+      setPlaceDirty(false);
+      setMsg(`장 ${plan.sections.length}개를 만들고 ${plan.placements.length}편을 나눴어요. 장 이름은 아래에서 바꿀 수 있어요.`);
+      onReload && onReload();
+    } catch (e) {
+      setMsg("장을 나누지 못했어요. 인터넷 연결을 확인해 주세요.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   function editSettings(patch) {
     setSettings((s) => ({ ...s, ...patch }));
     setSettingsDirty(true);
@@ -360,7 +480,7 @@ export default function BookEditor({ submissions, onReload }) {
       {sub === "order" && (
         <div>
           <p className="text-xs mb-4" style={{ color: PALETTE.textMuted }}>
-            확인 완료한 글이 실린 순서입니다. 화살표로 순서를, 칸에서 장을 정한 뒤 <b>순서 저장하기</b>를 누르세요. 장 이름은
+            확인 완료한 글이 실린 순서입니다. 화살표로 순서를, 칸에서 장을 정한 뒤 <b>순서 저장하기</b>를 누르세요. 맞춤법·띄어쓰기는 <b>고치기</b>로 바로 고칠 수 있어요. 장 이름은
             '③ 책 정보·인쇄'에서 만듭니다.
           </p>
           {arranged.length === 0 ? (
@@ -399,6 +519,9 @@ export default function BookEditor({ submissions, onReload }) {
                       <button onClick={() => move(i, 1)} disabled={!sameBelow} aria-label="아래로" className="p-1.5 rounded-md border" style={{ ...inputStyle, opacity: sameBelow ? 1 : 0.3 }}>
                         <ArrowDown size={14} />
                       </button>
+                      <button onClick={() => setEditing(editing === e.id ? null : e.id)} className="flex items-center gap-1 px-2 py-1 rounded-md border text-xs font-bold" style={inputStyle}>
+                        <Pencil size={12} /> 고치기
+                      </button>
                       <button onClick={() => setPlace(e.id, { included: false })} aria-label="책에서 빼기" className="p-1.5 rounded-md" style={{ color: PALETTE.signal }}>
                         <MinusCircle size={16} />
                       </button>
@@ -411,6 +534,17 @@ export default function BookEditor({ submissions, onReload }) {
                         댓글 {cs.length}개 {openComments === e.id ? "닫기" : "보기"}
                       </button>
                     </div>
+                    {editing === e.id && (
+                      <EntryEditor
+                        entry={e}
+                        onCancel={() => setEditing(null)}
+                        onSaved={(m) => {
+                          setEditing(null);
+                          setMsg(m);
+                          onReload && onReload();
+                        }}
+                      />
+                    )}
                     {openComments === e.id && (
                       <ul className="mt-2 pl-8 flex flex-col gap-1">
                         {cs.length === 0 && <li className="text-xs" style={{ color: PALETTE.textMuted }}>아직 댓글이 없어요.</li>}
@@ -467,6 +601,17 @@ export default function BookEditor({ submissions, onReload }) {
             <input value={settings.subtitle} onChange={(e) => editSettings({ subtitle: e.target.value })} className="w-full px-3 py-2 rounded-md text-sm border mb-4" style={inputStyle} />
 
             <p className="text-xs font-bold mb-1" style={{ color: PALETTE.textMuted }}>장 나누기 (선택 — 없으면 순서대로 한 줄)</p>
+            <button
+              onClick={autoChapters}
+              disabled={saving || arranged.length === 0}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-bold border mb-1"
+              style={{ ...inputStyle, opacity: saving || arranged.length === 0 ? 0.4 : 1 }}
+            >
+              📚 책 제목별로 장 자동 나누기
+            </button>
+            <p className="text-xs mb-2" style={{ color: PALETTE.textMuted }}>
+              같은 책을 2명 이상 읽었으면 한 장으로 묶고, 나머지는 '여러 책 이야기' 장에 모아요. 바로 저장돼요.
+            </p>
             <ul className="flex flex-col gap-1.5 mb-2">
               {sections.map((s, k) => (
                 <li key={s.id} className="flex items-center gap-2">

@@ -79,13 +79,22 @@ export async function fetchAllSubmissions() {
 // 같은 이름 + 같은 코너로 "아직 끝내지 않은" 원고가 있으면 찾아서 이어서 쓸 수 있게 합니다.
 // (studentName만 등호 조건으로 걸어서 인덱스 설정 없이도 바로 동작하도록 하고,
 //  코너/완료 여부는 가져온 뒤 자바스크립트에서 걸러냅니다.)
-export async function findActiveSubmission({ studentName, studentNo, activityId }) {
+// 같은 코너인지는 코너 번호(activityId)로 먼저 보고, 번호가 달라도 코너 이름이 같으면 같은 코너로 봅니다.
+// (선생님이 코너를 지웠다가 같은 이름으로 다시 만들면 번호가 바뀌기 때문이에요.)
+export function sameCorner(data, activityId, activityLabel) {
+  if (data.activityId === activityId) return true;
+  const a = String(data.activityLabel || "").replace(/\s+/g, "");
+  const b = String(activityLabel || "").replace(/\s+/g, "");
+  return !!a && a === b;
+}
+
+export async function findActiveSubmission({ studentName, studentNo, activityId, activityLabel }) {
   const q = query(collection(db, SUBMISSIONS), where("studentName", "==", studentName));
   const snap = await getDocs(q);
   let best = null;
   snap.forEach((d) => {
     const data = { id: d.id, ...d.data() };
-    if (data.activityId !== activityId) return;
+    if (!sameCorner(data, activityId, activityLabel)) return;
     if (data.status === "completed") return;
     // 번호까지 적어 둔 기록이라면, 같은 이름이라도 번호가 다르면 남의 글이므로 건너뜁니다.
     if (studentNo && data.studentNo && String(data.studentNo) !== String(studentNo)) return;

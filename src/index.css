@@ -56,3 +56,19 @@ input:focus {
     inset: auto !important;
   }
 }
+
+/* 인쇄할 때 쪽 번호(표지에는 넣지 않음). 인쇄 창의 '머리글과 바닥글'은 꺼 주세요. */
+@media print {
+  @page {
+    @bottom-center {
+      content: counter(page);
+      font-size: 10pt;
+      color: #6b6255;
+    }
+  }
+  @page :first {
+    @bottom-center {
+      content: none;
+    }
+  }
+}

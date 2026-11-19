@@ -50,7 +50,8 @@ function Empty({ children }) {
 function submissionTitle(s) {
   const when = s.updatedAt?.toDate ? s.updatedAt.toDate().toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" }) : "";
   const rounds = Array.isArray(s.versions) ? s.versions.length : 0;
-  return `${studentLabel(s)} · ${s.activityLabel || "코너 없음"} · ${rounds}회차${when ? ` · ${when}` : ""}`;
+  const status = s.status === "completed" ? "완성" : "쓰는 중";
+  return `${studentLabel(s)} · ${s.activityLabel || "코너 없음"} · ${rounds}회차 · ${status}${when ? ` · ${when}` : ""}`;
 }
 
 // 학생 글 하나를 고르는 드롭다운입니다. 번호순으로 줄 세웁니다.

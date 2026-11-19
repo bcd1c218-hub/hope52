@@ -175,6 +175,95 @@ export function entryTitleOf(s) {
   return b.title || (b.bookTitle ? `『${b.bookTitle}』${objectParticle(b.bookTitle)} 읽고` : s?.activityLabel || "글");
 }
 
+// 비교용으로 제목을 단순하게 만듭니다. ("제목:", 괄호·따옴표·문장부호·띄어쓰기를 뺍니다)
+function plainTitle(t) {
+  return String(t || "")
+    .replace(/^\s*제목\s*[:：]?\s*/, "")
+    .replace(/[\s<>《》「」『』\[\]()"'“”‘’.,!?·:：~\-_]/g, "");
+}
+
+// 본문 첫 줄이 제목을 한 번 더 쓴 줄이면 책·읽기 화면에서는 숨깁니다. (저장된 글은 그대로예요.)
+export function displayTextOf(s) {
+  const text = bookTextOf(s);
+  const lines = String(text).split("\n");
+  const firstIdx = lines.findIndex((l) => l.trim() !== "");
+  if (firstIdx === -1) return text;
+  const first = lines[firstIdx].trim();
+  if (first.length > 40) return text;
+  const p = plainTitle(first);
+  if (!p) return text;
+  const b = s?.book || {};
+  const titles = [entryTitleOf(s), b.title, b.bookTitle].map(plainTitle).filter(Boolean);
+  // 완전히 같으면 숨기고, 앞부분만 같을 때는 "문장"(마침표 등으로 끝남)이 아니고 짧은 쪽이 3글자 이상일 때만 숨깁니다.
+  const sentence = /[.!?。]$/.test(first) || /다$/.test(first);
+  const dup = titles.some(
+    (t) => t === p || (!sentence && p.length <= 30 && (p.startsWith(t) || t.startsWith(p)) && Math.min(p.length, t.length) >= 3)
+  );
+  if (!dup) return text;
+  return lines.slice(firstIdx + 1).join("\n").replace(/^\s*\n/, "");
+}
+
+// 선생님이 책에 실린 글을 직접 고칩니다. (제목·한 줄 추천·책 정보·본문)
+export async function editBookEntry({ submissionId, patch }) {
+  const data = {};
+  ["title", "oneLine", "bookTitle", "bookAuthor", "text"].forEach((k) => {
+    if (typeof patch[k] === "string") data[`book.${k}`] = patch[k];
+  });
+  if (Object.keys(data).length) await updateDoc(doc(db, SUBMISSIONS, submissionId), data);
+}
+
+/* ── 책 제목별로 장 나누기 ─────────────────── */
+
+function bookKey(title) {
+  return plainTitle(title).replace(/9살/g, "아홉살").replace(/짝궁/g, "짝꿍");
+}
+
+function editDistance(a, b) {
+  const dp = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+  for (let j = 1; j <= b.length; j++) dp[0][j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+  }
+  return dp[a.length][b.length];
+}
+
+// entries(순서대로 줄 선 글)를 읽은 책별로 묶어, 장 목록과 글마다의 장·순서를 돌려줍니다.
+// 2편 이상 같은 책은 한 장, 나머지는 "여러 책 이야기" 장에 모읍니다.
+export function planChaptersByBook(entries, otherTitle = "여러 책 이야기") {
+  const groups = [];
+  entries.forEach((e) => {
+    const raw = String(e.book?.bookTitle || "").replace(/[『』「」《》]/g, "").replace(/\s+/g, " ").trim();
+    const key = bookKey(raw);
+    let g = key ? groups.find((x) => x.key === key || (key.length >= 4 && x.key.length >= 4 && editDistance(x.key, key) <= 1)) : null;
+    if (!g) {
+      g = { key: key || `none-${e.id}`, names: {}, items: [], first: groups.length };
+      groups.push(g);
+    }
+    if (raw) g.names[raw] = (g.names[raw] || 0) + 1;
+    g.items.push(e);
+  });
+  const big = groups.filter((g) => g.items.length >= 2).sort((a, b) => b.items.length - a.items.length || a.first - b.first);
+  const rest = groups.filter((g) => g.items.length < 2).flatMap((g) => g.items);
+  const sections = [];
+  const placements = [];
+  let order = 0;
+  big.forEach((g, i) => {
+    // 가장 많이 쓴 책 제목을 장 이름으로 써요. (자주 틀리는 '짝궁'은 '짝꿍'으로 바로잡아요)
+    const name = (Object.entries(g.names).sort((a, b) => b[1] - a[1])[0]?.[0] || "책").replace(/짝궁/g, "짝꿍");
+    const id = `s${Date.now()}-${i}`;
+    sections.push({ id, title: `${i + 1}장. ${name}` });
+    g.items.forEach((e) => placements.push({ id: e.id, included: true, order: order++, sectionId: id }));
+  });
+  if (rest.length) {
+    const id = `s${Date.now()}-etc`;
+    sections.push({ id, title: `${sections.length + 1}장. ${otherTitle}` });
+    rest.forEach((e) => placements.push({ id: e.id, included: true, order: order++, sectionId: id }));
+  }
+  return { sections, placements };
+}
+
 // 책에 실린 글만 순서대로 돌려줍니다. 장이 있으면 장 순서 → 글 순서.
 export function arrangeBook(submissions, settings) {
   const sections = Array.isArray(settings?.sections) ? settings.sections : [];

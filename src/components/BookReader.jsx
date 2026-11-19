@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { BookOpen, RefreshCcw, MessageCircle, Loader2 } from "lucide-react";
 import { PALETTE } from "../palette.js";
 import { classLabel } from "../data/classInfo.js";
-import { fetchBook, addReaction, addComment, bookTextOf, entryTitleOf, REACTIONS } from "../services/book.js";
+import { fetchBook, addReaction, addComment, displayTextOf, entryTitleOf, REACTIONS } from "../services/book.js";
 
 export function Stars({ value, size = 14 }) {
   if (!value) return null;
@@ -55,7 +55,7 @@ export function EntryBody({ entry, sectionTitle, print = false }) {
         </p>
       )}
       <p className={`whitespace-pre-wrap sayeon-serif ${print ? "text-base leading-9" : "text-sm leading-8"}`} style={{ color: PALETTE.text }}>
-        {bookTextOf(entry)}
+        {displayTextOf(entry)}
       </p>
     </article>
   );

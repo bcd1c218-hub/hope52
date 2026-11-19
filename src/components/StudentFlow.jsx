@@ -157,7 +157,11 @@ export default function StudentFlow() {
   }
 
   function continueSubmission(sub) {
-    const found = activities.find((a) => a.id === sub.activityId);
+    // 코너를 다시 만들어 번호가 바뀌었어도, 이름이 같은 코너의 안내문을 그대로 쓰게 합니다.
+    const label = String(sub.activityLabel || "").replace(/\s+/g, "");
+    const found =
+      activities.find((a) => a.id === sub.activityId) ||
+      activities.find((a) => label && String(a.label || "").replace(/\s+/g, "") === label);
     const act = found || { id: sub.activityId, label: sub.activityLabel || "글", writingPrompt: "" };
     const validIds = (act.kind === "question" ? QUESTION_FOCUS_OPTIONS : FOCUS_OPTIONS).map((f) => f.id);
     setFocus((prev) => {
@@ -177,7 +181,12 @@ export default function StudentFlow() {
     setCheckingResume(true);
     setStep("checkingResume");
     try {
-      const existing = await findActiveSubmission({ studentName: name, studentNo, activityId: chosenActivity.id });
+      const existing = await findActiveSubmission({
+        studentName: name,
+        studentNo,
+        activityId: chosenActivity.id,
+        activityLabel: chosenActivity.label,
+      });
       if (existing && existing.versions && existing.versions.length > 0) {
         applyExisting(existing);
         setCheckingResume(false);
@@ -248,7 +257,15 @@ export default function StudentFlow() {
       const result = await requestFeedback({
         text: finalText,
         activity,
-        previous: prev ? { text: prev.text, feedback: prev.feedback, plan: prev.plan } : null,
+        previous: prev
+          ? {
+              text: prev.text,
+              feedback: prev.feedback,
+              plan: prev.plan,
+              // 지금까지 받은 맞춤법 안내를 모두 보내서, 전에 한 안내와 반대로 말하지 않게 합니다.
+              pastFixes: versions.flatMap((v) => (Array.isArray(v.feedback?.copyedit_fixes) ? v.feedback.copyedit_fixes : [])).slice(-10),
+            }
+          : null,
         options,
       });
       const fb = { ...result, options: isQuestion ? { ...options, corner: "question" } : options };

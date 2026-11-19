@@ -1,4 +1,5 @@
 import { extractJson, feedbackPrompt, questionCoachPrompt } from "../lib/prompts.js";
+import { filterCopyedits } from "../lib/copyedit.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -54,6 +55,11 @@ export default async function handler(req, res) {
     if (!block) return res.status(502).json({ error: "편집자 AI의 응답을 읽지 못했어요." });
 
     const parsed = extractJson(block.text);
+    // 맞춤법 안내가 지난번과 반대이거나 학생 글에 없는 표현이면 걸러 냅니다.
+    if (parsed && Array.isArray(parsed.copyedit_fixes)) {
+      const past = previous && (Array.isArray(previous.pastFixes) ? previous.pastFixes : previous.feedback?.copyedit_fixes);
+      parsed.copyedit_fixes = filterCopyedits(parsed.copyedit_fixes, text, past);
+    }
     return res.status(200).json(parsed);
   } catch (e) {
     return res.status(500).json({ error: e.message || "알 수 없는 오류가 발생했어요." });
